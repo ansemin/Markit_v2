@@ -86,10 +86,10 @@ class GeminiFlashParser(DocumentParser):
                 model="gemini-2.0-flash",
                 contents=[
                     prompt,
-                    {
-                        "mime_type": mime_type,
-                        "data": file_content
-                    }
+                    genai.types.Part.from_bytes(
+                        data=file_content,
+                        mime_type=mime_type
+                    )
                 ],
                 config={
                     "temperature": 0.2,
