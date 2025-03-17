@@ -25,9 +25,9 @@ pydantic==2.7.1
 # GOT-OCR dependencies
 torch>=2.0.1
 torchvision>=0.15.2
-transformers==4.37.2  # Pin to a specific version that works with safetensors 0.4.1
+transformers==4.37.2  # Pin to a specific version that works with safetensors 0.4.3
 tiktoken>=0.6.0
 verovio>=4.3.1
 accelerate>=0.28.0
-safetensors==0.4.1  # Match the minimum version required by transformers
+safetensors==0.4.3  # Updated to meet minimum version required by accelerate
 packaging>=21.0  # For version comparison
