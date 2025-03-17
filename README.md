@@ -30,7 +30,6 @@ Markit is a powerful tool that converts various document formats (PDF, DOCX, ima
 - **Advanced Parsing Engines**:
   - **PyPdfium**: Fast PDF parsing using the PDFium engine
   - **Docling**: Advanced document structure analysis
-  - **Marker**: Specialized for markup and formatting
   - **Gemini Flash**: AI-powered conversion using Google's Gemini API
   - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only)
 - **OCR Integration**: Extract text from images and scanned documents using Tesseract OCR
@@ -121,9 +120,7 @@ build:
 2. Select a parser provider:
    - **PyPdfium**: Best for standard PDFs with selectable text
    - **Docling**: Best for complex document layouts
-   - **Marker**: Best for preserving document formatting
    - **Gemini Flash**: Best for AI-powered conversions (requires API key)
-   - **GOT-OCR**: Best for high-quality OCR on images (JPG/PNG only)
 3. Choose an OCR option based on your selected parser:
    - **None**: No OCR processing (for documents with selectable text)
    - **Tesseract**: Basic OCR using Tesseract
@@ -188,7 +185,6 @@ markit/
 │   │   ├── parser_interface.py # Parser interface
 │   │   ├── parser_registry.py # Parser registry
 │   │   ├── docling_parser.py # Docling parser
-│   │   ├── marker_parser.py # Marker parser
 │   │   └── pypdfium_parser.py # PyPDFium parser
 │   ├── ui/                 # User interface
 │   │   ├── __init__.py     # Package initialization
