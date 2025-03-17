@@ -1,26 +1,28 @@
-docling==2.25.0
+# Core dependencies
 gradio==5.14.0
 grpcio-status==1.70.0
 markdown==3.7
 multiprocess==0.70.16
 pipdeptree==2.25.0
-pytesseract==0.3.13
-semchunk==2.2.2
 Pillow>=9.0.0,<11.0.0
 numpy>=1.21.0
-# Tesseract dependencies
+
+# PDF processing
+pdf2image>=1.16.0
+
+# OCR dependencies (for GOT-OCR)
+pytesseract==0.3.13
 tesseract==0.1.3
 tesserocr>=2.5.0; platform_system != "Windows"  # Only install on non-Windows systems
-# Additional dependencies for image processing
 opencv-python-headless>=4.5.0  # Headless version for server environments
-pdf2image>=1.16.0  # For PDF processing
+
+# Utility dependencies
 dill==0.3.8  # Downgraded to be compatible with datasets
+python-dotenv>=1.0.0
+pydantic==2.7.1
+
 # Gemini API client
 google-genai>=0.1.0
-# Environment variables
-python-dotenv>=1.0.0
-# Pin pydantic to resolve compatibility issues with gradio
-pydantic==2.7.1
 
 # GOT-OCR dependencies
 torch>=2.0.1

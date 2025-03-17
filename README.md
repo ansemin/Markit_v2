@@ -1,5 +1,5 @@
 ---
-title: Markit v2
+title: Markit GOT OCR
 emoji: 📄
 colorFrom: blue
 colorTo: indigo

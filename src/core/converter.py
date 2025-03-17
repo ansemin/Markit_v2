@@ -8,7 +8,7 @@ from pathlib import Path
 from src.core.parser_factory import ParserFactory
 
 # Import all parsers to ensure they're registered
-import parsers
+from src import parsers
 
 # Reference to the cancellation flag from ui.py
 # This will be set by the UI when the cancel button is clicked
