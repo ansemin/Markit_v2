@@ -1,0 +1,35 @@
+docling==2.25.0
+gradio==5.14.0
+grpcio-status==1.70.0
+markdown==3.7
+marker-pdf==1.3.5
+multiprocess==0.70.16
+openai==1.61.1
+pipdeptree==2.25.0
+pytesseract==0.3.13
+semchunk==2.2.2
+Pillow>=9.0.0
+numpy>=1.21.0
+# Tesseract dependencies
+tesseract==0.1.3
+tesserocr>=2.5.0; platform_system != "Windows"  # Only install on non-Windows systems
+# Additional dependencies for image processing
+opencv-python-headless>=4.5.0  # Headless version for server environments
+pdf2image>=1.16.0  # For PDF processing
+dill==0.3.8  # Downgraded to be compatible with datasets
+# Gemini API client
+google-genai>=0.1.0
+# Environment variables
+python-dotenv>=1.0.0
+# Pin pydantic to resolve compatibility issues with gradio
+pydantic==2.7.1
+
+# GOT-OCR dependencies
+torch>=2.0.1
+torchvision>=0.15.2
+transformers>=4.37.2,<4.48.0  # Pin to a compatible version for GOT-OCR
+tiktoken>=0.6.0
+verovio>=4.3.1
+accelerate>=0.28.0
+safetensors>=0.4.0
+packaging>=21.0  # For version comparison

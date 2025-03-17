@@ -1,0 +1,6 @@
+tesseract-ocr
+tesseract-ocr-eng
+libtesseract-dev
+libleptonica-dev
+imagemagick
+poppler-utils 
