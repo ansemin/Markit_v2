@@ -76,14 +76,9 @@ class GotOcrParser(DocumentParser):
                     trust_remote_code=True
                 )
                 
-                # Determine device mapping based on ZeroGPU availability
-                if ZEROGPU_AVAILABLE:
-                    logger.info("Using ZeroGPU for model loading")
-                    # Request GPU resources through ZeroGPU
-                    spaces.enable_gpu()
-                    device_map = 'cuda'
-                elif torch.cuda.is_available():
-                    logger.info("Using local CUDA device for model loading")
+                # Determine device mapping based on CUDA availability
+                if torch.cuda.is_available():
+                    logger.info("Using CUDA device for model loading")
                     device_map = 'cuda'
                 else:
                     logger.warning("No GPU available, falling back to CPU (not recommended)")
@@ -123,14 +118,6 @@ class GotOcrParser(DocumentParser):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
-        # Release ZeroGPU resources if available
-        if ZEROGPU_AVAILABLE:
-            try:
-                spaces.disable_gpu()
-                logger.info("ZeroGPU resources released")
-            except Exception as e:
-                logger.warning(f"Error releasing ZeroGPU resources: {str(e)}")
-        
         logger.info("GOT-OCR model released from memory")
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
@@ -141,8 +128,8 @@ class GotOcrParser(DocumentParser):
                 "torch, transformers, tiktoken, verovio, accelerate"
             )
         
-        # Check if CUDA is available (either directly or through ZeroGPU)
-        if not torch.cuda.is_available() and not ZEROGPU_AVAILABLE:
+        # Check if CUDA is available
+        if not torch.cuda.is_available():
             logger.warning("No GPU available. GOT-OCR performance may be severely degraded.")
         
         # Check file extension
@@ -156,6 +143,14 @@ class GotOcrParser(DocumentParser):
         # Determine OCR type based on method
         ocr_type = "format" if ocr_method == "format" else "ocr"
         
+        # Use ZeroGPU if available, otherwise use regular processing
+        if ZEROGPU_AVAILABLE:
+            return self._parse_with_zerogpu(file_path, ocr_type, **kwargs)
+        else:
+            return self._parse_regular(file_path, ocr_type, **kwargs)
+    
+    def _parse_regular(self, file_path: Path, ocr_type: str, **kwargs) -> str:
+        """Regular parsing without ZeroGPU."""
         try:
             # Load the model
             self._load_model()
@@ -168,17 +163,7 @@ class GotOcrParser(DocumentParser):
                 ocr_type=ocr_type
             )
             
-            # Format the output based on the requested format
-            output_format = kwargs.get("output_format", "markdown").lower()
-            if output_format == "json":
-                return json.dumps({"content": result}, ensure_ascii=False, indent=2)
-            elif output_format == "text":
-                # Simple markdown to text conversion
-                return result.replace("#", "").replace("*", "").replace("_", "")
-            elif output_format == "document_tags":
-                return f"<doc>\n{result}\n</doc>"
-            else:
-                return result
+            return self._format_result(result, **kwargs)
                 
         except torch.cuda.OutOfMemoryError:
             self.release_model()  # Release memory
@@ -202,6 +187,46 @@ class GotOcrParser(DocumentParser):
         except Exception as e:
             logger.error(f"Error processing document with GOT-OCR: {str(e)}")
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+    
+    def _parse_with_zerogpu(self, file_path: Path, ocr_type: str, **kwargs) -> str:
+        """Parse using ZeroGPU for dynamic GPU allocation."""
+        try:
+            # Define the GPU-dependent function
+            @spaces.GPU
+            def process_with_gpu():
+                # Load the model
+                self._load_model()
+                
+                # Use the model's chat method
+                logger.info(f"Processing image with GOT-OCR using ZeroGPU: {file_path}")
+                return self._model.chat(
+                    self._tokenizer, 
+                    str(file_path), 
+                    ocr_type=ocr_type
+                )
+            
+            # Call the GPU-decorated function
+            result = process_with_gpu()
+            
+            # Format and return the result
+            return self._format_result(result, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"Error processing document with GOT-OCR (ZeroGPU): {str(e)}")
+            raise RuntimeError(f"Error processing document with GOT-OCR (ZeroGPU): {str(e)}")
+    
+    def _format_result(self, result: str, **kwargs) -> str:
+        """Format the OCR result based on the requested format."""
+        output_format = kwargs.get("output_format", "markdown").lower()
+        if output_format == "json":
+            return json.dumps({"content": result}, ensure_ascii=False, indent=2)
+        elif output_format == "text":
+            # Simple markdown to text conversion
+            return result.replace("#", "").replace("*", "").replace("_", "")
+        elif output_format == "document_tags":
+            return f"<doc>\n{result}\n</doc>"
+        else:
+            return result
 
 # Register the parser with the registry if GOT is available
 if GOT_AVAILABLE:
