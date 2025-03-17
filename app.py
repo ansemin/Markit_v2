@@ -134,5 +134,26 @@ except ModuleNotFoundError:
 # Call setup function at import time
 setup_tesseract()
 
+# Add this near the top of app.py after imports
+# Handle potential import conflicts
+try:
+    import transformers
+    print(f"Transformers version: {transformers.__version__}")
+except ImportError:
+    print("Warning: Transformers not installed or not working")
+
+try:
+    import torch
+    print(f"Torch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+except ImportError:
+    print("Warning: PyTorch not installed or not working")
+
+try:
+    import docling
+    print(f"Docling version: {docling.__version__ if hasattr(docling, '__version__') else 'unknown'}")
+except ImportError:
+    print("Warning: Docling not installed or not working")
+
 if __name__ == "__main__":
     main()

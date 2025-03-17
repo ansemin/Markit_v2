@@ -78,17 +78,20 @@ echo "Installing Google Gemini API client..."
 pip install -q -U google-genai
 echo "Google Gemini API client installed successfully"
 
-# Install GOT-OCR dependencies
+# Install GOT-OCR dependencies first
 echo "Installing GOT-OCR dependencies..."
-# Install transformers and other dependencies first
-pip install -q -U transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
-# Install torch and torchvision separately with --no-deps to avoid conflicts
 pip install -q -U torch==2.0.1 torchvision==0.15.2 --no-deps
+pip install -q -U transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
 echo "GOT-OCR dependencies installed successfully"
 
-# Install Python dependencies
-echo "Installing Python dependencies..."
-pip install -e .
+# Install docling separately with --no-deps to avoid conflicts
+echo "Installing docling..."
+pip install -q -U docling==2.25.0 --no-deps
+echo "Docling installed successfully"
+
+# Install remaining Python dependencies
+echo "Installing remaining Python dependencies..."
+pip install -e . --no-deps
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
