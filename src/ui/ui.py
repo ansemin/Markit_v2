@@ -5,6 +5,7 @@ import time
 import logging
 from pathlib import Path
 from src.core.converter import convert_file, set_cancellation_flag, is_conversion_in_progress
+from src.services.docling_chat import chat_with_document
 from src.parsers.parser_registry import ParserRegistry
 
 # Configure logging
@@ -168,44 +169,52 @@ def create_ui():
         # State to store the output format (fixed to Markdown)
         output_format_state = gr.State("Markdown")
 
-        # File input first
-        file_input = gr.File(label="Upload PDF", type="filepath")
-        
-        # Provider and OCR options below the file input
-        with gr.Row(elem_classes=["provider-options-row"]):
-            with gr.Column(scale=1):
-                parser_names = ParserRegistry.get_parser_names()
-                default_parser = parser_names[0] if parser_names else "PyPdfium"
+        with gr.Tabs():
+            with gr.Tab("Upload and Convert"):
+                # File input first
+                file_input = gr.File(label="Upload PDF", type="filepath")
                 
-                provider_dropdown = gr.Dropdown(
-                    label="Provider",
-                    choices=parser_names,
-                    value=default_parser,
-                    interactive=True
-                )
-            with gr.Column(scale=1):
-                default_ocr_options = ParserRegistry.get_ocr_options(default_parser)
-                default_ocr = default_ocr_options[0] if default_ocr_options else "No OCR"
+                # Provider and OCR options below the file input
+                with gr.Row(elem_classes=["provider-options-row"]):
+                    with gr.Column(scale=1):
+                        parser_names = ParserRegistry.get_parser_names()
+                        default_parser = parser_names[0] if parser_names else "PyPdfium"
+                        
+                        provider_dropdown = gr.Dropdown(
+                            label="Provider",
+                            choices=parser_names,
+                            value=default_parser,
+                            interactive=True
+                        )
+                    with gr.Column(scale=1):
+                        default_ocr_options = ParserRegistry.get_ocr_options(default_parser)
+                        default_ocr = default_ocr_options[0] if default_ocr_options else "No OCR"
+                        
+                        ocr_dropdown = gr.Dropdown(
+                            label="OCR Options",
+                            choices=default_ocr_options,
+                            value=default_ocr,
+                            interactive=True
+                        )
                 
-                ocr_dropdown = gr.Dropdown(
-                    label="OCR Options",
-                    choices=default_ocr_options,
-                    value=default_ocr,
-                    interactive=True
+                # Simple output container with just one scrollbar
+                file_display = gr.HTML(
+                    value="<div class='output-container'></div>",
+                    label="Converted Content"
                 )
-        
-        # Simple output container with just one scrollbar
-        file_display = gr.HTML(
-            value="<div class='output-container'></div>",
-            label="Converted Content"
-        )
-        
-        file_download = gr.File(label="Download File")
-        
-        # Processing controls row
-        with gr.Row(elem_classes=["processing-controls"]):
-            convert_button = gr.Button("Convert", variant="primary")
-            cancel_button = gr.Button("Cancel", variant="stop", visible=False)
+                
+                file_download = gr.File(label="Download File")
+                
+                # Processing controls row
+                with gr.Row(elem_classes=["processing-controls"]):
+                    convert_button = gr.Button("Convert", variant="primary")
+                    cancel_button = gr.Button("Cancel", variant="stop", visible=False)
+
+            with gr.Tab("Chat with Document"):
+                document_text_state = gr.State("")
+                chatbot = gr.Chatbot(label="Chat", type="messages")
+                text_input = gr.Textbox(placeholder="Type here...")
+                clear_btn = gr.Button("Clear")
 
         # Event handlers
         provider_dropdown.change(
@@ -258,6 +267,24 @@ def create_ui():
             inputs=[conversion_thread],
             outputs=[convert_button, cancel_button, cancel_requested, conversion_thread],
             queue=False  # Execute immediately
+        )
+
+        file_display.change(
+            lambda text: text,
+            inputs=[file_display],
+            outputs=[document_text_state]
+        )
+
+        text_input.submit(
+            fn=chat_with_document,
+            inputs=[text_input, chatbot, document_text_state],
+            outputs=[chatbot, chatbot]
+        )
+
+        clear_btn.click(
+            lambda: ([], []),
+            None,
+            [chatbot, chatbot]
         )
 
     return demo

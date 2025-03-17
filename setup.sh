@@ -18,16 +18,10 @@ pip install -q -U pytesseract pillow opencv-python-headless pdf2image
 pip install -q -U google-genai
 echo "Python dependencies installed successfully"
 
-# Install GOT-OCR dependencies first
+# Install GOT-OCR dependencies
 echo "Installing GOT-OCR dependencies..."
-pip install -q -U torch==2.0.1 torchvision==0.15.2 --no-deps
-pip install -q -U transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
+pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.47.0 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
 echo "GOT-OCR dependencies installed successfully"
-
-# Install docling separately with --no-deps to avoid conflicts
-echo "Installing docling..."
-pip install -q -U docling==2.25.0 --no-deps
-echo "Docling installed successfully"
 
 # Install tesserocr with pip
 echo "Installing tesserocr..."
