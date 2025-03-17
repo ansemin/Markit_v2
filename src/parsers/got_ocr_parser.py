@@ -25,9 +25,19 @@ try:
             "Consider downgrading to version <4.48.0"
         )
     
+    # Import spaces for ZeroGPU support
+    try:
+        import spaces
+        ZEROGPU_AVAILABLE = True
+        logger.info("ZeroGPU support is available")
+    except ImportError:
+        ZEROGPU_AVAILABLE = False
+        logger.info("ZeroGPU not available, will use standard GPU if available")
+    
     GOT_AVAILABLE = True
 except ImportError:
     GOT_AVAILABLE = False
+    ZEROGPU_AVAILABLE = False
     logger.warning("GOT-OCR dependencies not installed. The parser will not be available.")
 
 class GotOcrParser(DocumentParser):
@@ -65,15 +75,35 @@ class GotOcrParser(DocumentParser):
                     'stepfun-ai/GOT-OCR2_0', 
                     trust_remote_code=True
                 )
+                
+                # Determine device mapping based on ZeroGPU availability
+                if ZEROGPU_AVAILABLE:
+                    logger.info("Using ZeroGPU for model loading")
+                    # Request GPU resources through ZeroGPU
+                    spaces.enable_gpu()
+                    device_map = 'cuda'
+                elif torch.cuda.is_available():
+                    logger.info("Using local CUDA device for model loading")
+                    device_map = 'cuda'
+                else:
+                    logger.warning("No GPU available, falling back to CPU (not recommended)")
+                    device_map = 'auto'
+                
                 cls._model = AutoModel.from_pretrained(
                     'stepfun-ai/GOT-OCR2_0', 
                     trust_remote_code=True, 
                     low_cpu_mem_usage=True, 
-                    device_map='cuda', 
+                    device_map=device_map, 
                     use_safetensors=True,
                     pad_token_id=cls._tokenizer.eos_token_id
                 )
-                cls._model = cls._model.eval().cuda()
+                
+                # Set model to evaluation mode
+                if device_map == 'cuda':
+                    cls._model = cls._model.eval().cuda()
+                else:
+                    cls._model = cls._model.eval()
+                    
                 logger.info("GOT-OCR model loaded successfully")
             except Exception as e:
                 cls._model = None
@@ -92,6 +122,15 @@ class GotOcrParser(DocumentParser):
             cls._tokenizer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        
+        # Release ZeroGPU resources if available
+        if ZEROGPU_AVAILABLE:
+            try:
+                spaces.disable_gpu()
+                logger.info("ZeroGPU resources released")
+            except Exception as e:
+                logger.warning(f"Error releasing ZeroGPU resources: {str(e)}")
+        
         logger.info("GOT-OCR model released from memory")
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
@@ -102,9 +141,9 @@ class GotOcrParser(DocumentParser):
                 "torch, transformers, tiktoken, verovio, accelerate"
             )
         
-        # Check if CUDA is available
-        if not torch.cuda.is_available():
-            raise RuntimeError("GOT-OCR requires CUDA. CPU-only mode is not supported.")
+        # Check if CUDA is available (either directly or through ZeroGPU)
+        if not torch.cuda.is_available() and not ZEROGPU_AVAILABLE:
+            logger.warning("No GPU available. GOT-OCR performance may be severely degraded.")
         
         # Check file extension
         file_path = Path(file_path)
