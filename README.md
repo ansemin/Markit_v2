@@ -121,6 +121,7 @@ build:
    - **PyPdfium**: Best for standard PDFs with selectable text
    - **Docling**: Best for complex document layouts
    - **Gemini Flash**: Best for AI-powered conversions (requires API key)
+   - **GOT-OCR**: Best for high-quality OCR on images (JPG/PNG only)
 3. Choose an OCR option based on your selected parser:
    - **None**: No OCR processing (for documents with selectable text)
    - **Tesseract**: Basic OCR using Tesseract
