@@ -137,13 +137,6 @@ build:
 6. Navigate through pages using the navigation buttons for multi-page documents
 7. Download the converted content in your selected format
 
-### Document Chat
-1. After converting a document, switch to the "Chat with Document" tab
-2. Type your questions about the document content
-3. The AI will analyze the document and provide context-aware responses
-4. Use the conversation history to track your Q&A session
-5. Click "Clear" to start a new conversation
-
 ## Troubleshooting
 
 ### OCR Issues
@@ -201,20 +194,7 @@ markit/
 │   │   ├── __init__.py     # Package initialization
 │   │   └── ui.py           # Gradio UI implementation
 │   └── services/           # External services
-│       ├── __init__.py     # Package initialization
-│       └── docling_chat.py # Chat service
+│       └── __init__.py     # Package initialization
 └── tests/                  # Tests
     └── __init__.py         # Package initialization
 ```
-
-### Adding a New Parser
-1. Create a new parser class implementing the `DocumentParser` interface
-2. Register the parser with the `ParserRegistry`
-3. Implement the required methods: `get_name()`, `get_supported_ocr_methods()`, and `parse()`
-4. Add your parser to the imports in `src/parsers/__init__.py`
-
-## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-This project is open source and available under the MIT License.
