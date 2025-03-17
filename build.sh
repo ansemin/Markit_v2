@@ -80,7 +80,10 @@ echo "Google Gemini API client installed successfully"
 
 # Install GOT-OCR dependencies
 echo "Installing GOT-OCR dependencies..."
-pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.47.0 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
+# Use compatible versions to avoid conflicts
+pip install -q -U torch==2.0.1 torchvision==0.15.2
+pip install -q -U transformers==4.37.2
+pip install -q -U tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.0
 echo "GOT-OCR dependencies installed successfully"
 
 # Install Python dependencies
