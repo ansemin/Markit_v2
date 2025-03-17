@@ -15,7 +15,6 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.models.tesseract_ocr_model import TesseractOcrOptions
 from docling.models.tesseract_ocr_cli_model import TesseractCliOcrOptions
-from docling.models.ocr_mac_model import OcrMacOptions
 
 
 class DoclingParser(DocumentParser):
@@ -51,11 +50,6 @@ class DoclingParser(DocumentParser):
             {
                 "id": "tesseract_cli",
                 "name": "Tesseract CLI",
-                "default_params": {}
-            },
-            {
-                "id": "ocrmac",
-                "name": "ocrmac",
                 "default_params": {}
             },
             {
@@ -95,9 +89,6 @@ class DoclingParser(DocumentParser):
         elif ocr_method == "tesseract_cli":
             pipeline_options.do_ocr = True
             pipeline_options.ocr_options = TesseractCliOcrOptions()
-        elif ocr_method == "ocrmac":
-            pipeline_options.do_ocr = True
-            pipeline_options.ocr_options = OcrMacOptions()
         
         # Create the converter
         converter = DocumentConverter(
