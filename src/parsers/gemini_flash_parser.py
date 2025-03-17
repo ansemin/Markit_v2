@@ -12,7 +12,7 @@ from src.parsers.parser_registry import ParserRegistry
 
 # Import the Google Gemini API client
 try:
-    import google.generativeai as genai
+    from google import genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -61,9 +61,6 @@ class GeminiFlashParser(DocumentParser):
             )
         
         try:
-            # Configure the Gemini API with the API key
-            genai.configure(api_key=api_key)
-            
             # Determine file type based on extension
             file_path = Path(file_path)
             file_extension = file_path.suffix.lower()
@@ -74,8 +71,8 @@ class GeminiFlashParser(DocumentParser):
             # Determine MIME type based on file extension
             mime_type = self._get_mime_type(file_extension)
             
-            # Create a multipart content with the file
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            # Create a client and use the model
+            client = genai.Client(api_key=api_key)
             
             # Set up the prompt
             prompt = """
@@ -85,7 +82,8 @@ class GeminiFlashParser(DocumentParser):
             """
             
             # Generate the response
-            response = model.generate_content(
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
                 contents=[
                     prompt,
                     {
@@ -93,7 +91,7 @@ class GeminiFlashParser(DocumentParser):
                         "data": file_content
                     }
                 ],
-                generation_config={
+                config={
                     "temperature": 0.2,
                     "top_p": 0.95,
                     "top_k": 40,

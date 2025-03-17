@@ -79,8 +79,8 @@ requirement.txt
 test_gemini_parser.py
 
 # Ignore documents folder
-/documents/
-/documents/*
+# /documents/
+# /documents/*
 
 # Ignore tessdata folder
 /tessdata/
