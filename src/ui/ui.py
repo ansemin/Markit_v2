@@ -159,8 +159,7 @@ def create_ui():
             margin-bottom: 15px;
         }
     """) as demo:
-        gr.Markdown("Markit: Convert any documents to Markdown")
-        
+        # Remove the header
         # State to track if cancellation is requested
         cancel_requested = gr.State(False)
         # State to store the conversion thread
