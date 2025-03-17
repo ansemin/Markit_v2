@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 # Check if required packages are installed
 try:
+    # First check for numpy as it's required by torch
+    try:
+        import numpy as np
+        NUMPY_AVAILABLE = True
+        logger.info(f"NumPy version {np.__version__} is available")
+    except ImportError:
+        NUMPY_AVAILABLE = False
+        logger.error("NumPy is not available. This is required for GOT-OCR.")
+    
     import torch
     import transformers
     from transformers import AutoModel, AutoTokenizer
@@ -34,10 +43,11 @@ try:
         ZEROGPU_AVAILABLE = False
         logger.info("ZeroGPU not available, will use standard GPU if available")
     
-    GOT_AVAILABLE = True
+    GOT_AVAILABLE = True and NUMPY_AVAILABLE
 except ImportError:
     GOT_AVAILABLE = False
     ZEROGPU_AVAILABLE = False
+    NUMPY_AVAILABLE = False
     logger.warning("GOT-OCR dependencies not installed. The parser will not be available.")
 
 class GotOcrParser(DocumentParser):
@@ -68,6 +78,9 @@ class GotOcrParser(DocumentParser):
     @classmethod
     def _load_model(cls):
         """Load the GOT-OCR model and tokenizer if not already loaded."""
+        if not NUMPY_AVAILABLE:
+            raise ImportError("NumPy is not available. This is required for GOT-OCR.")
+            
         if cls._model is None or cls._tokenizer is None:
             try:
                 logger.info("Loading GOT-OCR model and tokenizer...")
@@ -123,10 +136,16 @@ class GotOcrParser(DocumentParser):
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using GOT-OCR 2.0."""
         if not GOT_AVAILABLE:
-            raise ImportError(
-                "GOT-OCR dependencies not installed. Please install required packages: "
-                "torch, transformers, tiktoken, verovio, accelerate"
-            )
+            if not NUMPY_AVAILABLE:
+                raise ImportError(
+                    "NumPy is not available. This is required for GOT-OCR. "
+                    "Please ensure NumPy is installed in your environment."
+                )
+            else:
+                raise ImportError(
+                    "GOT-OCR dependencies not installed. Please install required packages: "
+                    "torch, transformers, tiktoken, verovio, accelerate"
+                )
         
         # Check if CUDA is available
         if not torch.cuda.is_available():
@@ -145,7 +164,14 @@ class GotOcrParser(DocumentParser):
         
         # Use ZeroGPU if available, otherwise use regular processing
         if ZEROGPU_AVAILABLE:
-            return self._parse_with_zerogpu(file_path, ocr_type, **kwargs)
+            try:
+                return self._parse_with_zerogpu(file_path, ocr_type, **kwargs)
+            except RuntimeError as e:
+                if "numpy" in str(e).lower():
+                    logger.warning("NumPy issues in ZeroGPU environment, falling back to regular processing")
+                    return self._parse_regular(file_path, ocr_type, **kwargs)
+                else:
+                    raise
         else:
             return self._parse_regular(file_path, ocr_type, **kwargs)
     
@@ -194,6 +220,18 @@ class GotOcrParser(DocumentParser):
             # Define the GPU-dependent function
             @spaces.GPU
             def process_with_gpu():
+                # Ensure NumPy is available
+                try:
+                    import numpy
+                except ImportError:
+                    # Try to install numpy if not available
+                    import subprocess
+                    import sys
+                    logger.warning("NumPy not found in ZeroGPU environment, attempting to install...")
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy>=1.24.0"])
+                    import numpy
+                    logger.info(f"NumPy {numpy.__version__} installed successfully in ZeroGPU environment")
+                
                 # Load the model
                 self._load_model()
                 
@@ -211,6 +249,17 @@ class GotOcrParser(DocumentParser):
             # Format and return the result
             return self._format_result(result, **kwargs)
             
+        except ImportError as e:
+            if "numpy" in str(e).lower():
+                logger.error(f"NumPy import error in ZeroGPU environment: {str(e)}")
+                raise RuntimeError(
+                    "NumPy is not available in the ZeroGPU environment. "
+                    "This is a known issue with some HuggingFace Spaces. "
+                    "Please try using a different parser or contact support."
+                )
+            else:
+                logger.error(f"Import error in ZeroGPU environment: {str(e)}")
+                raise RuntimeError(f"Error processing document with GOT-OCR (ZeroGPU): {str(e)}")
         except Exception as e:
             logger.error(f"Error processing document with GOT-OCR (ZeroGPU): {str(e)}")
             raise RuntimeError(f"Error processing document with GOT-OCR (ZeroGPU): {str(e)}")

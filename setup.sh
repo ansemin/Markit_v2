@@ -18,6 +18,11 @@ else
     echo "If system dependencies are needed, please run this script with sudo."
 fi
 
+# Install NumPy first as it's required by many other packages
+echo "Installing NumPy..."
+pip install -q -U numpy>=1.24.0
+echo "NumPy installed successfully"
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
 pip install -q -U pillow opencv-python-headless
