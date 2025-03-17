@@ -34,11 +34,6 @@ echo "Installing GOT-OCR dependencies..."
 pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.3
 echo "GOT-OCR dependencies installed successfully"
 
-# Install ZeroGPU support
-echo "Installing ZeroGPU support..."
-pip install -q -U spaces>=0.19.1
-echo "ZeroGPU support installed successfully"
-
 # Install the project in development mode
 echo "Installing project in development mode..."
 pip install -e .
