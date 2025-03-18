@@ -107,13 +107,19 @@ class GotOcrParser(DocumentParser):
                     logger.warning("No GPU available, falling back to CPU (not recommended)")
                     device_map = 'auto'
                 
+                # Set torch default dtype to float16 since the CUDA device doesn't support bfloat16
+                logger.info("Setting default tensor type to float16")
+                torch.set_default_tensor_type(torch.FloatTensor)
+                torch.set_default_dtype(torch.float16)
+                
                 cls._model = AutoModel.from_pretrained(
                     'stepfun-ai/GOT-OCR2_0', 
                     trust_remote_code=True, 
                     low_cpu_mem_usage=True, 
                     device_map=device_map, 
                     use_safetensors=True,
-                    pad_token_id=cls._tokenizer.eos_token_id
+                    pad_token_id=cls._tokenizer.eos_token_id,
+                    torch_dtype=torch.float16  # Explicitly specify float16 dtype
                 )
                 
                 # Set model to evaluation mode
@@ -121,6 +127,10 @@ class GotOcrParser(DocumentParser):
                     cls._model = cls._model.eval().cuda()
                 else:
                     cls._model = cls._model.eval()
+                
+                # Reset default dtype to float32 after model loading
+                torch.set_default_dtype(torch.float32)
+                torch.set_default_tensor_type(torch.FloatTensor)
                     
                 logger.info("GOT-OCR model loaded successfully")
             except Exception as e:
