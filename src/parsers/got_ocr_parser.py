@@ -131,7 +131,7 @@ class GotOcrParser(DocumentParser):
                 logger.info("Patching model to use float16 instead of bfloat16")
                 original_chat = cls._model.chat
                 
-                def patched_chat(self, tokenizer, image_path, ocr_type=None, *args, **kwargs):
+                def patched_chat(self, tokenizer, image_path, *args, **kwargs):
                     # Check if patch is working
                     logger.info("Using patched chat method with float16")
                     
@@ -139,10 +139,7 @@ class GotOcrParser(DocumentParser):
                     if hasattr(torch.amp, 'autocast'):
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             try:
-                                # Don't pass ocr_type as a keyword arg if it's already a positional argument
-                                if 'ocr_type' in kwargs and ocr_type is not None:
-                                    del kwargs['ocr_type']
-                                return original_chat(self, tokenizer, image_path, ocr_type=ocr_type, *args, **kwargs)
+                                return original_chat(self, tokenizer, image_path, *args, **kwargs)
                             except RuntimeError as e:
                                 if "bfloat16" in str(e):
                                     logger.error(f"BFloat16 error encountered despite patching: {e}")
@@ -150,10 +147,7 @@ class GotOcrParser(DocumentParser):
                                 else:
                                     raise
                     else:
-                        # Same handling for non-autocast case
-                        if 'ocr_type' in kwargs and ocr_type is not None:
-                            del kwargs['ocr_type']
-                        return original_chat(self, tokenizer, image_path, ocr_type=ocr_type, *args, **kwargs)
+                        return original_chat(self, tokenizer, image_path, *args, **kwargs)
                 
                 # Apply the patch
                 import types
@@ -351,11 +345,11 @@ class GotOcrParser(DocumentParser):
             # Use the model's chat method as shown in the documentation
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             try:
-                # First try with patched method
+                # First try with patched method - use positional argument for ocr_type to match the original function signature
                 result = self._model.chat(
                     self._tokenizer, 
                     str(file_path), 
-                    ocr_type=ocr_type
+                    ocr_type
                 )
             except RuntimeError as e:
                 if "bfloat16" in str(e) or "BFloat16" in str(e):
@@ -367,11 +361,11 @@ class GotOcrParser(DocumentParser):
                             old_dtype = torch.get_default_dtype()
                             torch.set_default_dtype(torch.float16)
                             
-                            # Call the original method directly
+                            # Call the original method directly - use positional argument for ocr_type
                             result = self._model.chat(
                                 self._tokenizer,
                                 str(file_path),
-                                ocr_type=ocr_type
+                                ocr_type
                             )
                             
                             # Restore default dtype
