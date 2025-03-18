@@ -72,7 +72,7 @@ class GotOcrParser(DocumentParser):
             try:
                 # Import dependencies inside the method to avoid global import errors
                 import torch
-                from transformers import AutoModelForImageTextToText, AutoProcessor
+                from transformers import AutoModel, AutoProcessor
                 
                 logger.info("Loading GOT-OCR model and processor...")
                 
@@ -89,11 +89,12 @@ class GotOcrParser(DocumentParser):
                 )
                 
                 # Load model with explicit float16 for T4 compatibility
-                cls._model = AutoModelForImageTextToText.from_pretrained(
+                cls._model = AutoModel.from_pretrained(
                     'stepfun-ai/GOT-OCR2_0-hf',
                     low_cpu_mem_usage=True,
                     device_map=device_map,
-                    torch_dtype=torch.float16  # Force float16 for T4 compatibility
+                    torch_dtype=torch.float16,  # Force float16 for T4 compatibility
+                    trust_remote_code=True
                 )
                 
                 # Explicitly convert model to half precision (float16)
