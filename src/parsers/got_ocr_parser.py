@@ -7,6 +7,11 @@ import logging
 import sys
 import importlib
 
+# Set PyTorch environment variables to force float16 instead of bfloat16
+os.environ["TORCH_CUDA_ARCH_LIST"] = "7.0+PTX"  # For T4 GPU compatibility
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"  
+
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
 
@@ -121,6 +126,32 @@ class GotOcrParser(DocumentParser):
                     pad_token_id=cls._tokenizer.eos_token_id,
                     torch_dtype=torch.float16  # Explicitly specify float16 dtype
                 )
+                
+                # Patch the model's chat method to use float16 instead of bfloat16
+                logger.info("Patching model to use float16 instead of bfloat16")
+                original_chat = cls._model.chat
+                
+                def patched_chat(self, tokenizer, image_path, *args, **kwargs):
+                    # Check if patch is working
+                    logger.info("Using patched chat method with float16")
+                    
+                    # Set explicit autocast dtype
+                    if hasattr(torch.amp, 'autocast'):
+                        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                            try:
+                                return original_chat(self, tokenizer, image_path, *args, **kwargs)
+                            except RuntimeError as e:
+                                if "bfloat16" in str(e):
+                                    logger.error(f"BFloat16 error encountered despite patching: {e}")
+                                    raise RuntimeError(f"GPU doesn't support bfloat16: {e}")
+                                else:
+                                    raise
+                    else:
+                        return original_chat(self, tokenizer, image_path, *args, **kwargs)
+                
+                # Apply the patch
+                import types
+                cls._model.chat = types.MethodType(patched_chat, cls._model)
                 
                 # Set model to evaluation mode
                 if device_map == 'cuda':
@@ -313,11 +344,38 @@ class GotOcrParser(DocumentParser):
             
             # Use the model's chat method as shown in the documentation
             logger.info(f"Processing image with GOT-OCR: {file_path}")
-            result = self._model.chat(
-                self._tokenizer, 
-                str(file_path), 
-                ocr_type=ocr_type
-            )
+            try:
+                # First try with patched method
+                result = self._model.chat(
+                    self._tokenizer, 
+                    str(file_path), 
+                    ocr_type=ocr_type
+                )
+            except RuntimeError as e:
+                if "bfloat16" in str(e) or "BFloat16" in str(e):
+                    logger.warning("Caught bfloat16 error, trying to force float16 with autocast")
+                    # Try with explicit autocast
+                    try:
+                        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                            # Temporarily set default dtype
+                            old_dtype = torch.get_default_dtype()
+                            torch.set_default_dtype(torch.float16)
+                            
+                            # Call the original method directly
+                            result = self._model.chat(
+                                self._tokenizer,
+                                str(file_path),
+                                ocr_type=ocr_type
+                            )
+                            
+                            # Restore default dtype
+                            torch.set_default_dtype(old_dtype)
+                    except Exception as inner_e:
+                        logger.error(f"Error in fallback method: {str(inner_e)}")
+                        raise RuntimeError(f"Error processing with GOT-OCR using fallback: {str(inner_e)}")
+                else:
+                    # Re-raise other errors
+                    raise
             
             # Return the result directly as markdown
             return result
