@@ -21,8 +21,7 @@ class GotOcrParser(DocumentParser):
     """
     
     _model = None
-    _processor = None
-    _stop_str = "<|im_end|>"
+    _tokenizer = None
     
     @classmethod
     def get_name(cls) -> str:
@@ -68,13 +67,19 @@ class GotOcrParser(DocumentParser):
     @classmethod
     def _load_model(cls):
         """Load the GOT-OCR model and tokenizer if not already loaded."""
-        if cls._model is None or cls._processor is None:
+        if cls._model is None or cls._tokenizer is None:
             try:
                 # Import dependencies inside the method to avoid global import errors
                 import torch
-                from transformers import AutoModel, AutoProcessor
+                from transformers import AutoModel, AutoTokenizer
                 
-                logger.info("Loading GOT-OCR model and processor...")
+                logger.info("Loading GOT-OCR model and tokenizer...")
+                
+                # Load tokenizer
+                cls._tokenizer = AutoTokenizer.from_pretrained(
+                    'stepfun-ai/GOT-OCR2_0',
+                    trust_remote_code=True
+                )
                 
                 # Determine device
                 device_map = 'cuda' if torch.cuda.is_available() else 'auto'
@@ -83,18 +88,15 @@ class GotOcrParser(DocumentParser):
                 else:
                     logger.warning("Using CPU for model inference (not recommended)")
                 
-                # Load the processor (includes tokenizer)
-                cls._processor = AutoProcessor.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0-hf'
-                )
-                
                 # Load model with explicit float16 for T4 compatibility
                 cls._model = AutoModel.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0-hf',
+                    'stepfun-ai/GOT-OCR2_0',
+                    trust_remote_code=True,
                     low_cpu_mem_usage=True,
                     device_map=device_map,
+                    use_safetensors=True,
                     torch_dtype=torch.float16,  # Force float16 for T4 compatibility
-                    trust_remote_code=True
+                    pad_token_id=cls._tokenizer.eos_token_id
                 )
                 
                 # Explicitly convert model to half precision (float16)
@@ -105,6 +107,7 @@ class GotOcrParser(DocumentParser):
                     cls._model = cls._model.cuda()
                 
                 # Patch torch.autocast to force float16 instead of bfloat16
+                # This fixes the issue in the model's chat method (line 581)
                 original_autocast = torch.autocast
                 def patched_autocast(*args, **kwargs):
                     # Force dtype to float16 when CUDA is involved
@@ -120,7 +123,7 @@ class GotOcrParser(DocumentParser):
                 return True
             except Exception as e:
                 cls._model = None
-                cls._processor = None
+                cls._tokenizer = None
                 logger.error(f"Failed to load GOT-OCR model: {str(e)}")
                 return False
         return True
@@ -135,9 +138,9 @@ class GotOcrParser(DocumentParser):
                 del cls._model
                 cls._model = None
             
-            if cls._processor is not None:
-                del cls._processor
-                cls._processor = None
+            if cls._tokenizer is not None:
+                del cls._tokenizer
+                cls._tokenizer = None
             
             # Clear CUDA cache if available
             if torch.cuda.is_available():
@@ -172,7 +175,6 @@ class GotOcrParser(DocumentParser):
         
         # Import torch here to ensure it's available
         import torch
-        from transformers.image_utils import load_image
         
         # Validate file path and extension
         file_path = Path(file_path)
@@ -185,43 +187,31 @@ class GotOcrParser(DocumentParser):
                 f"Received file with extension: {file_path.suffix}"
             )
         
-        # Determine format flag based on OCR method
-        format_flag = ocr_method == "format"
-        logger.info(f"Using OCR method: {'format' if format_flag else 'plain'}")
+        # Determine OCR type based on method
+        ocr_type = "format" if ocr_method == "format" else "ocr"
+        logger.info(f"Using OCR method: {ocr_type}")
         
         # Process the image
         try:
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             
-            # Load image with transformers utils
-            image = load_image(str(file_path))
-            
             # First attempt: Normal processing with autocast
             try:
                 with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                    # Process image with format flag if needed
-                    if format_flag:
-                        inputs = self._processor(image, return_tensors="pt", format=True).to("cuda")
+                    # Use format=True parameter when ocr_type is "format"
+                    if ocr_type == "format":
+                        result = self._model.chat(
+                            self._tokenizer,
+                            str(file_path),
+                            ocr_type='format'
+                        )
                     else:
-                        inputs = self._processor(image, return_tensors="pt").to("cuda")
-                    
-                    # Generate text
-                    generate_ids = self._model.generate(
-                        **inputs,
-                        do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=self._stop_str,
-                        max_new_tokens=4096,
-                    )
-                    
-                    # Decode the generated text
-                    result = self._processor.decode(
-                        generate_ids[0, inputs["input_ids"].shape[1]:],
-                        skip_special_tokens=True,
-                    )
-                    
-                    return result
-                    
+                        result = self._model.chat(
+                            self._tokenizer,
+                            str(file_path),
+                            ocr_type='ocr'
+                        )
+                return result
             except RuntimeError as e:
                 # Check if it's a bfloat16 error
                 if "bfloat16" in str(e) or "BFloat16" in str(e):
@@ -237,26 +227,19 @@ class GotOcrParser(DocumentParser):
                         torch.set_default_dtype(torch.float16)
                         
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                            # Process image with format flag if needed
-                            if format_flag:
-                                inputs = self._processor(image, return_tensors="pt", format=True).to("cuda")
+                            # Use format=True parameter when ocr_type is "format"
+                            if ocr_type == "format":
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type='format'
+                                )
                             else:
-                                inputs = self._processor(image, return_tensors="pt").to("cuda")
-                            
-                            # Generate text
-                            generate_ids = self._model.generate(
-                                **inputs,
-                                do_sample=False,
-                                tokenizer=self._processor.tokenizer,
-                                stop_strings=self._stop_str,
-                                max_new_tokens=4096,
-                            )
-                            
-                            # Decode the generated text
-                            result = self._processor.decode(
-                                generate_ids[0, inputs["input_ids"].shape[1]:],
-                                skip_special_tokens=True,
-                            )
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type='ocr'
+                                )
                         
                         # Restore default dtype
                         torch.set_default_dtype(original_dtype)
