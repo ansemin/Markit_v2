@@ -1,27 +1,13 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
-import json
-import os
-import tempfile
 import logging
+import os
 import sys
-import importlib
 
-# Set PyTorch environment variables to force float16 instead of bfloat16
-os.environ["TORCH_CUDA_ARCH_LIST"] = "7.0+PTX"  # For T4 GPU compatibility
+# Set PyTorch environment variables for T4 compatibility
+os.environ["TORCH_CUDA_ARCH_LIST"] = "7.0+PTX"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"  
-os.environ["PYTORCH_DISPATCHER_DISABLE_TORCH_FUNCTION_AUTOGRAD_FALLBACK"] = "1"  # Disable fallbacks that might use bfloat16
-
-# Add patch for bfloat16 at the module level
-if 'torch' in sys.modules:
-    torch_module = sys.modules['torch']
-    if hasattr(torch_module, 'bfloat16'):
-        # Create a reference to the original bfloat16 function
-        original_bfloat16 = torch_module.bfloat16
-        # Replace it with float16
-        torch_module.bfloat16 = torch_module.float16
-        logger.info("Patched torch.bfloat16 to use torch.float16 instead")
+os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
@@ -29,46 +15,10 @@ from src.parsers.parser_registry import ParserRegistry
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Global flag for NumPy availability
-NUMPY_AVAILABLE = False
-NUMPY_VERSION = None
-
-# Initialize torch as None in global scope to prevent reference errors
-torch = None
-GOT_AVAILABLE = False
-
-# Try to import NumPy
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-    NUMPY_VERSION = np.__version__
-    logger.info(f"NumPy version {NUMPY_VERSION} is available")
-except ImportError:
-    NUMPY_AVAILABLE = False
-    logger.error("NumPy is not available. This is required for GOT-OCR.")
-
-# Check if required packages are installed
-try:    
-    import torch as torch_module
-    torch = torch_module  # Assign to global variable
-    import transformers
-    from transformers import AutoModel, AutoTokenizer
-    
-    # Check if transformers version is compatible
-    from packaging import version
-    if version.parse(transformers.__version__) >= version.parse("4.48.0"):
-        logger.warning(
-            f"Transformers version {transformers.__version__} may not be compatible with GOT-OCR. "
-            "Consider downgrading to version <4.48.0"
-        )
-    
-    GOT_AVAILABLE = True and NUMPY_AVAILABLE
-except ImportError as e:
-    GOT_AVAILABLE = False
-    logger.warning(f"GOT-OCR dependencies not installed: {str(e)}. The parser will not be available.")
-
 class GotOcrParser(DocumentParser):
-    """Parser implementation using GOT-OCR 2.0."""
+    """Parser implementation using GOT-OCR 2.0 for document text extraction.
+    Optimized for NVIDIA T4 GPUs with explicit float16 support.
+    """
     
     _model = None
     _tokenizer = None
@@ -97,486 +47,204 @@ class GotOcrParser(DocumentParser):
         return "GOT-OCR 2.0 parser for converting images to text (requires CUDA)"
     
     @classmethod
+    def _check_dependencies(cls) -> bool:
+        """Check if all required dependencies are installed."""
+        try:
+            import numpy
+            import torch
+            import transformers
+            import tiktoken
+            
+            # Check CUDA availability if using torch
+            if hasattr(torch, 'cuda') and not torch.cuda.is_available():
+                logger.warning("CUDA is not available. GOT-OCR performs best with GPU acceleration.")
+            
+            return True
+        except ImportError as e:
+            logger.error(f"Missing dependency: {e}")
+            return False
+    
+    @classmethod
     def _load_model(cls):
         """Load the GOT-OCR model and tokenizer if not already loaded."""
-        global NUMPY_AVAILABLE, torch
-        
-        if not NUMPY_AVAILABLE:
-            raise ImportError("NumPy is not available. This is required for GOT-OCR.")
-            
-        if torch is None:
-            raise ImportError("PyTorch is not available. This is required for GOT-OCR.")
-            
         if cls._model is None or cls._tokenizer is None:
             try:
+                # Import dependencies inside the method to avoid global import errors
+                import torch
+                from transformers import AutoModel, AutoTokenizer
+                
                 logger.info("Loading GOT-OCR model and tokenizer...")
+                
+                # Load tokenizer
                 cls._tokenizer = AutoTokenizer.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0', 
+                    'stepfun-ai/GOT-OCR2_0',
                     trust_remote_code=True
                 )
                 
-                # Determine device mapping based on CUDA availability
-                if torch.cuda.is_available():
-                    logger.info("Using CUDA device for model loading")
-                    device_map = 'cuda'
+                # Determine device
+                device_map = 'cuda' if torch.cuda.is_available() else 'auto'
+                if device_map == 'cuda':
+                    logger.info("Using CUDA for model inference")
                 else:
-                    logger.warning("No GPU available, falling back to CPU (not recommended)")
-                    device_map = 'auto'
+                    logger.warning("Using CPU for model inference (not recommended)")
                 
-                # Set torch default dtype to float16 since the CUDA device doesn't support bfloat16
-                logger.info("Setting default tensor type to float16")
-                torch.set_default_tensor_type(torch.FloatTensor)
-                torch.set_default_dtype(torch.float16)
-                
-                # Aggressively patch torch.autocast to always use float16
-                original_autocast = torch.amp.autocast if hasattr(torch.amp, 'autocast') else None
-                
-                if original_autocast:
-                    def patched_autocast(*args, **kwargs):
-                        # Force dtype to float16
-                        kwargs['dtype'] = torch.float16
-                        return original_autocast(*args, **kwargs)
-                    
-                    torch.amp.autocast = patched_autocast
-                    logger.info("Patched torch.amp.autocast to always use float16")
-                
-                # Patch tensor casting methods for bfloat16
-                if hasattr(torch, 'Tensor'):
-                    if hasattr(torch.Tensor, 'to'):
-                        original_to = torch.Tensor.to
-                        def patched_to(self, *args, **kwargs):
-                            # If the first arg is a dtype and it's bfloat16, replace with float16
-                            if args and args[0] == torch.bfloat16:
-                                logger.warning("Intercepted attempt to cast tensor to bfloat16, using float16 instead")
-                                args = list(args)
-                                args[0] = torch.float16
-                                args = tuple(args)
-                            # If dtype is specified in kwargs and it's bfloat16, replace with float16
-                            if kwargs.get('dtype') == torch.bfloat16:
-                                logger.warning("Intercepted attempt to cast tensor to bfloat16, using float16 instead")
-                                kwargs['dtype'] = torch.float16
-                            return original_to(self, *args, **kwargs)
-                        
-                        torch.Tensor.to = patched_to
-                        logger.info("Patched torch.Tensor.to method to prevent bfloat16 usage")
-                
-                # Load the model with explicit float16 dtype
+                # Load model with explicit float16 for T4 compatibility
                 cls._model = AutoModel.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0', 
-                    trust_remote_code=True, 
-                    low_cpu_mem_usage=True, 
-                    device_map=device_map, 
+                    'stepfun-ai/GOT-OCR2_0',
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True,
+                    device_map=device_map,
                     use_safetensors=True,
-                    pad_token_id=cls._tokenizer.eos_token_id,
-                    torch_dtype=torch.float16  # Explicitly specify float16 dtype
+                    torch_dtype=torch.float16,  # Force float16 for T4 compatibility
+                    pad_token_id=cls._tokenizer.eos_token_id
                 )
                 
-                # Ensure all model parameters are float16
-                for param in cls._model.parameters():
-                    param.data = param.data.to(torch.float16)
+                # Explicitly convert model to half precision (float16)
+                cls._model = cls._model.half().eval()
                 
-                # Examine model internals to find any direct bfloat16 usage
-                def find_and_patch_bfloat16_attributes(module, path=""):
-                    for name, child in module.named_children():
-                        child_path = f"{path}.{name}" if path else name
-                        # Check if any attribute contains "bfloat16" in its name
-                        for attr_name in dir(child):
-                            if "bfloat16" in attr_name.lower():
-                                try:
-                                    # Try to get the attribute
-                                    attr_value = getattr(child, attr_name)
-                                    logger.warning(f"Found potential bfloat16 usage at {child_path}.{attr_name}")
-                                    # Try to replace with float16 equivalent if it exists
-                                    float16_attr_name = attr_name.replace("bfloat16", "float16").replace("bf16", "fp16")
-                                    if hasattr(child, float16_attr_name):
-                                        logger.info(f"Replacing {attr_name} with {float16_attr_name}")
-                                        setattr(child, attr_name, getattr(child, float16_attr_name))
-                                except Exception as e:
-                                    logger.error(f"Error examining attribute {attr_name}: {e}")
-                        # Recursively check child modules
-                        find_and_patch_bfloat16_attributes(child, child_path)
-                
-                # Apply the internal examination
-                logger.info("Examining model for potential bfloat16 usage...")
-                find_and_patch_bfloat16_attributes(cls._model)
-                
-                # Patch the model's chat method to use float16 instead of bfloat16
-                logger.info("Patching model to use float16 instead of bfloat16")
-                original_chat = cls._model.chat
-                
-                # Get the original signature to understand the proper parameter order
-                import inspect
-                try:
-                    original_sig = inspect.signature(original_chat)
-                    logger.info(f"Original chat method signature: {original_sig}")
-                except Exception as e:
-                    logger.warning(f"Could not inspect original chat method: {e}")
-                
-                # Define a completely new patched chat method that avoids parameter conflicts
-                def patched_chat(self, tokenizer, image_path, ocr_type, **kwargs):
-                    """A patched version of chat method that forces float16 precision"""
-                    logger.info(f"Using patched chat method with float16, ocr_type={ocr_type}")
-                    
-                    # Force any bfloat16 tensors to float16
-                    if hasattr(torch, 'bfloat16') and torch.bfloat16 != torch.float16:
-                        torch.bfloat16 = torch.float16
-                        logger.info("Forcing torch.bfloat16 to be torch.float16 within chat method")
-                    
-                    # Set explicit autocast dtype
-                    if hasattr(torch.amp, 'autocast'):
-                        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                            try:
-                                # Pass arguments correctly - without 'self' as first arg since original_chat is already bound
-                                return original_chat(tokenizer, image_path, ocr_type, **kwargs)
-                            except TypeError as e:
-                                logger.warning(f"First call approach failed: {e}, trying alternative approach")
-                                try:
-                                    # Try passing image_path as string in case that's the issue
-                                    return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
-                                except Exception as e2:
-                                    logger.warning(f"Second call approach also failed: {e2}")
-                                    # Fall back to original method with keyword args
-                                    return original_chat(tokenizer, image_path, ocr_type=ocr_type, **kwargs)
-                            except RuntimeError as e:
-                                if "bfloat16" in str(e):
-                                    logger.error(f"BFloat16 error encountered despite patching: {e}")
-                                    # More aggressive handling
-                                    if hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'autocast'):
-                                        logger.info("Attempting with torch.cuda.amp.autocast as last resort")
-                                        with torch.cuda.amp.autocast(dtype=torch.float16):
-                                            return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
-                                    raise RuntimeError(f"GPU doesn't support bfloat16: {e}")
-                                else:
-                                    raise
-                    else:
-                        # If autocast is not available, try to manually ensure everything is float16
-                        try:
-                            # Direct call without 'self' as first arg
-                            return original_chat(tokenizer, image_path, ocr_type, **kwargs)
-                        except TypeError as e:
-                            logger.warning(f"Call without autocast failed: {e}, trying alternative approach")
-                            try:
-                                # Try passing image_path as string in case that's the issue
-                                return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
-                            except:
-                                # Fall back to keyword arguments
-                                return original_chat(tokenizer, image_path, ocr_type=ocr_type, **kwargs)
-                
-                # Apply the patch
-                import types
-                cls._model.chat = types.MethodType(patched_chat, cls._model)
-                
-                # Check if the model has a cast_to_bfloat16 method and override it
-                if hasattr(cls._model, 'cast_to_bfloat16'):
-                    original_cast = cls._model.cast_to_bfloat16
-                    def patched_cast(self, *args, **kwargs):
-                        logger.info("Intercepted attempt to cast model to bfloat16, using float16 instead")
-                        # If the model has a cast_to_float16 method, use that instead
-                        if hasattr(self, 'cast_to_float16'):
-                            return self.cast_to_float16(*args, **kwargs)
-                        # Otherwise, cast all parameters manually
-                        for param in self.parameters():
-                            param.data = param.data.to(torch.float16)
-                        return self
-                    
-                    cls._model.cast_to_bfloat16 = types.MethodType(patched_cast, cls._model)
-                    logger.info("Patched model.cast_to_bfloat16 method")
-                
-                # Set model to evaluation mode
+                # Move to CUDA if available
                 if device_map == 'cuda':
-                    cls._model = cls._model.eval().cuda().half()  # Explicitly cast to half precision (float16)
-                else:
-                    cls._model = cls._model.eval().half()  # Explicitly cast to half precision (float16)
+                    cls._model = cls._model.cuda()
                 
-                # Reset default dtype to float32 after model loading
-                torch.set_default_dtype(torch.float32)
-                torch.set_default_tensor_type(torch.FloatTensor)
-                    
                 logger.info("GOT-OCR model loaded successfully")
+                return True
             except Exception as e:
                 cls._model = None
                 cls._tokenizer = None
                 logger.error(f"Failed to load GOT-OCR model: {str(e)}")
-                raise RuntimeError(f"Failed to load GOT-OCR model: {str(e)}")
+                return False
+        return True
     
     @classmethod
     def release_model(cls):
         """Release the model from memory."""
-        global torch
-        
-        if cls._model is not None:
-            del cls._model
-            cls._model = None
-        if cls._tokenizer is not None:
-            del cls._tokenizer
-            cls._tokenizer = None
-        if torch is not None and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'empty_cache'):
-            torch.cuda.empty_cache()
-        
-        logger.info("GOT-OCR model released from memory")
-    
-    def _try_install_numpy(self):
-        """Attempt to install NumPy using pip."""
-        global NUMPY_AVAILABLE, NUMPY_VERSION
-        
-        logger.warning("Attempting to install NumPy...")
         try:
-            import subprocess
-            # Try to install numpy with explicit version constraint for compatibility with torchvision
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-q", "numpy<2.0.0", "--no-cache-dir"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"NumPy installation result: {result.stdout}")
+            import torch
             
-            # Try to import numpy again
-            importlib.invalidate_caches()
-            import numpy as np
-            importlib.reload(np)
+            if cls._model is not None:
+                del cls._model
+                cls._model = None
             
-            NUMPY_AVAILABLE = True
-            NUMPY_VERSION = np.__version__
-            logger.info(f"NumPy installed successfully: version {NUMPY_VERSION}")
-            return True
+            if cls._tokenizer is not None:
+                del cls._tokenizer
+                cls._tokenizer = None
+            
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            logger.info("GOT-OCR model released from memory")
         except Exception as e:
-            logger.error(f"Failed to install NumPy: {str(e)}")
-            if hasattr(e, 'stderr'):
-                logger.error(f"Installation error output: {e.stderr}")
-            return False
-    
-    def _try_install_torch(self):
-        """Attempt to install PyTorch using pip."""
-        global torch
-        
-        logger.warning("Attempting to install PyTorch...")
-        try:
-            import subprocess
-            # Install PyTorch with version constraint as per the requirements
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-q", "torch==2.0.1", "torchvision==0.15.2", "--no-cache-dir"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info(f"PyTorch installation result: {result.stdout}")
-            
-            # Try to import torch again
-            importlib.invalidate_caches()
-            import torch as torch_module
-            torch = torch_module
-            
-            logger.info(f"PyTorch installed successfully: version {torch.__version__}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to install PyTorch: {str(e)}")
-            if hasattr(e, 'stderr'):
-                logger.error(f"Installation error output: {e.stderr}")
-            return False
+            logger.error(f"Error releasing model: {str(e)}")
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
-        """Parse a document using GOT-OCR 2.0."""
-        global NUMPY_AVAILABLE, GOT_AVAILABLE, torch
+        """Parse a document using GOT-OCR 2.0.
         
-        # Check NumPy availability and try to install if not available
-        if not NUMPY_AVAILABLE:
-            logger.warning("NumPy not available, attempting to install it...")
-            if self._try_install_numpy():
-                # NumPy is now available
-                logger.info("NumPy is now available")
-            else:
-                logger.error("Failed to install NumPy. Cannot proceed with GOT-OCR.")
-                raise ImportError(
-                    "NumPy is not available and could not be installed automatically. "
-                    "Please ensure NumPy is installed in your environment. "
-                    "Add the following to your logs for debugging: NUMPY_INSTALLATION_FAILED"
-                )
+        Args:
+            file_path: Path to the image file
+            ocr_method: OCR method to use ('plain' or 'format')
+            **kwargs: Additional arguments to pass to the model
+            
+        Returns:
+            Extracted text from the image
+        """
+        # Verify dependencies are installed
+        if not self._check_dependencies():
+            raise ImportError(
+                "Required dependencies are missing. Please install: "
+                "torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 "
+                "tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0"
+            )
         
-        # Check PyTorch availability and try to install if not available
-        if torch is None:
-            logger.warning("PyTorch not available, attempting to install it...")
-            if self._try_install_torch():
-                # PyTorch is now available
-                logger.info("PyTorch is now available")
-            else:
-                logger.error("Failed to install PyTorch. Cannot proceed with GOT-OCR.")
-                raise ImportError(
-                    "PyTorch is not available and could not be installed automatically. "
-                    "Please ensure PyTorch is installed in your environment."
-                )
+        # Load model if not already loaded
+        if not self._load_model():
+            raise RuntimeError("Failed to load GOT-OCR model")
         
-        # Update GOT availability flag after potential installations
-        try:
-            if NUMPY_AVAILABLE and torch is not None:
-                import transformers
-                GOT_AVAILABLE = True
-                logger.info("Updated GOT availability after installations: Available")
-            else:
-                GOT_AVAILABLE = False
-                logger.error("GOT availability after installations: Not Available (missing dependencies)")
-        except ImportError:
-            GOT_AVAILABLE = False
-            logger.error("Transformers not available. GOT-OCR cannot be used.")
+        # Import torch here to ensure it's available
+        import torch
         
-        # Check overall GOT availability
-        if not GOT_AVAILABLE:
-            if not NUMPY_AVAILABLE:
-                logger.error("NumPy is still not available after installation attempt.")
-                raise ImportError(
-                    "NumPy is not available. This is required for GOT-OCR. "
-                    "Please ensure NumPy is installed in your environment. "
-                    "Environment details: Python " + sys.version
-                )
-            elif torch is None:
-                logger.error("PyTorch is still not available after installation attempt.")
-                raise ImportError(
-                    "PyTorch is not available. This is required for GOT-OCR. "
-                    "Please ensure PyTorch is installed in your environment."
-                )
-            else:
-                logger.error("Other GOT-OCR dependencies missing even though NumPy and PyTorch are available.")
-                raise ImportError(
-                    "GOT-OCR dependencies not installed. Please install required packages: "
-                    "transformers, tiktoken, verovio, accelerate"
-                )
-        
-        # Check if CUDA is available
-        cuda_available = torch is not None and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'is_available') and torch.cuda.is_available()
-        if not cuda_available:
-            logger.warning("No GPU available. GOT-OCR performance may be severely degraded.")
-        
-        # Check file extension
+        # Validate file path and extension
         file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Image file not found: {file_path}")
+        
         if file_path.suffix.lower() not in ['.jpg', '.jpeg', '.png']:
             raise ValueError(
-                "GOT-OCR only supports JPG and PNG formats. "
+                f"GOT-OCR only supports JPG and PNG formats. "
                 f"Received file with extension: {file_path.suffix}"
             )
         
         # Determine OCR type based on method
         ocr_type = "format" if ocr_method == "format" else "ocr"
+        logger.info(f"Using OCR method: {ocr_type}")
         
+        # Process the image
         try:
-            # Check if numpy needs to be reloaded
-            if 'numpy' in sys.modules:
-                logger.info("NumPy module found in sys.modules, attempting to reload...")
-                try:
-                    importlib.reload(sys.modules['numpy'])
-                    import numpy as np
-                    logger.info(f"NumPy reloaded successfully: version {np.__version__}")
-                except Exception as e:
-                    logger.error(f"Error reloading NumPy: {str(e)}")
-            
-            # Load the model
-            self._load_model()
-            
-            # Use the model's chat method as shown in the documentation
             logger.info(f"Processing image with GOT-OCR: {file_path}")
+            
+            # First attempt: Normal processing with autocast
             try:
-                # Use ocr_type as a positional argument based on the correct signature
-                logger.info(f"Using OCR method: {ocr_type}")
-                
-                # Temporarily force any PyTorch operations to use float16
                 with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                     result = self._model.chat(
-                        self._tokenizer, 
-                        str(file_path), 
-                        ocr_type  # Pass as positional arg, not keyword
+                        self._tokenizer,
+                        str(file_path),
+                        ocr_type
                     )
+                return result
             except RuntimeError as e:
+                # Check if it's a bfloat16 error
                 if "bfloat16" in str(e) or "BFloat16" in str(e):
-                    logger.warning("Caught bfloat16 error, trying to force float16 with autocast")
-                    # Try with explicit autocast
+                    logger.warning("Encountered bfloat16 error, trying float16 fallback")
+                    
+                    # Second attempt: More aggressive float16 forcing
                     try:
-                        # More aggressive approach with multiple settings
+                        # Ensure model is float16
+                        self._model = self._model.half()
                         
-                        # Ensure bfloat16 is aliased to float16 globally
-                        if hasattr(torch, 'bfloat16') and torch.bfloat16 != torch.float16:
-                            logger.info("Forcing bfloat16 to be float16 in exception handler")
-                            torch.bfloat16 = torch.float16
+                        # Set default dtype temporarily
+                        original_dtype = torch.get_default_dtype()
+                        torch.set_default_dtype(torch.float16)
                         
-                        # Apply patch to the model's config if it exists
-                        if hasattr(self._model, 'config'):
-                            if hasattr(self._model.config, 'torch_dtype'):
-                                logger.info(f"Setting model config dtype from {self._model.config.torch_dtype} to float16")
-                                self._model.config.torch_dtype = torch.float16
-                        
-                        # Try with all possible autocast combinations
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                            # Temporarily set default dtype
-                            old_dtype = torch.get_default_dtype()
-                            torch.set_default_dtype(torch.float16)
-                            
-                            # Call with positional argument for ocr_type
-                            logger.info("Using fallback with autocast and default dtype set to float16")
                             result = self._model.chat(
                                 self._tokenizer,
                                 str(file_path),
                                 ocr_type
                             )
-                            
-                            # Restore default dtype
-                            torch.set_default_dtype(old_dtype)
-                    except Exception as inner_e:
-                        logger.error(f"Error in fallback method: {str(inner_e)}")
                         
-                        # Last resort: try using torchscript if available
-                        try:
-                            logger.info("Attempting final approach with model.half() and direct call")
-                            # Force model to half precision
-                            self._model = self._model.half()
-                            
-                            # Try direct call with the original method
-                            result = self._model.chat(
-                                self._tokenizer,
-                                str(file_path),
-                                ocr_type
-                            )
-                        except Exception as final_e:
-                            logger.error(f"All fallback approaches failed: {str(final_e)}")
-                            raise RuntimeError(f"Error processing with GOT-OCR using fallback: {str(final_e)}")
+                        # Restore default dtype
+                        torch.set_default_dtype(original_dtype)
+                        return result
+                    except Exception as inner_e:
+                        logger.error(f"Float16 fallback failed: {str(inner_e)}")
+                        raise RuntimeError(
+                            f"Failed to process image with GOT-OCR: {str(inner_e)}"
+                        )
                 else:
-                    # Re-raise other errors
+                    # Not a bfloat16 error, re-raise
                     raise
-            
-            # Return the result directly as markdown
-            return result
-                
+                    
         except Exception as e:
-            error_type = type(e).__name__
+            logger.error(f"Error processing image with GOT-OCR: {str(e)}")
             
-            # Handle specific error types
-            if torch is not None and hasattr(torch, 'cuda') and error_type == 'OutOfMemoryError':
-                self.release_model()  # Release memory
-                logger.error("GPU out of memory while processing with GOT-OCR")
+            # Handle specific errors with helpful messages
+            error_type = type(e).__name__
+            if error_type == 'OutOfMemoryError':
+                self.release_model()
                 raise RuntimeError(
                     "GPU out of memory while processing with GOT-OCR. "
                     "Try using a smaller image or a different parser."
                 )
-            elif error_type == 'AttributeError' and "get_max_length" in str(e):
-                logger.error(f"Transformers version compatibility error: {str(e)}")
-                self.release_model()  # Release memory
-                raise RuntimeError(
-                    "Transformers version compatibility error with GOT-OCR. "
-                    "Please downgrade transformers to version <4.48.0. "
-                    f"Error: {str(e)}"
-                )
-            else:
-                logger.error(f"Error processing document with GOT-OCR: {str(e)}")
-                raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+            
+            # Generic error
+            raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
 
-# Register the parser with the registry if dependencies are available
+# Try to register the parser
 try:
-    if NUMPY_AVAILABLE and torch is not None:
-        ParserRegistry.register(GotOcrParser)
-        logger.info("GOT-OCR parser registered successfully")
-    else:
-        missing_deps = []
-        if not NUMPY_AVAILABLE:
-            missing_deps.append("NumPy")
-        if torch is None:
-            missing_deps.append("PyTorch")
-        logger.warning(f"GOT-OCR parser not registered: missing dependencies: {', '.join(missing_deps)}")
-except Exception as e:
-    logger.error(f"Error registering GOT-OCR parser: {str(e)}") 
+    # Only check basic imports, detailed dependency check happens in parse method
+    import numpy
+    import torch
+    ParserRegistry.register(GotOcrParser)
+    logger.info("GOT-OCR parser registered successfully")
+except ImportError as e:
+    logger.warning(f"Could not register GOT-OCR parser: {str(e)}") 
