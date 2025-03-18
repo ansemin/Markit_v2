@@ -106,6 +106,19 @@ class GotOcrParser(DocumentParser):
                 if device_map == 'cuda':
                     cls._model = cls._model.cuda()
                 
+                # Patch torch.autocast to force float16 instead of bfloat16
+                # This fixes the issue in the model's chat method (line 581)
+                original_autocast = torch.autocast
+                def patched_autocast(*args, **kwargs):
+                    # Force dtype to float16 when CUDA is involved
+                    if args and args[0] == "cuda":
+                        kwargs['dtype'] = torch.float16
+                    return original_autocast(*args, **kwargs)
+                
+                # Apply the patch
+                torch.autocast = patched_autocast
+                logger.info("Patched torch.autocast to always use float16 for CUDA operations")
+                
                 logger.info("GOT-OCR model loaded successfully")
                 return True
             except Exception as e:
