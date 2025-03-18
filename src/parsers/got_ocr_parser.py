@@ -198,11 +198,20 @@ class GotOcrParser(DocumentParser):
             # First attempt: Normal processing with autocast
             try:
                 with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                    result = self._model.chat(
-                        self._tokenizer,
-                        str(file_path),
-                        ocr_type
-                    )
+                    # Use format=True parameter when ocr_type is "format"
+                    if ocr_type == "format":
+                        result = self._model.chat(
+                            self._tokenizer,
+                            str(file_path),
+                            ocr_type=ocr_type,
+                            format=True
+                        )
+                    else:
+                        result = self._model.chat(
+                            self._tokenizer,
+                            str(file_path),
+                            ocr_type=ocr_type
+                        )
                 return result
             except RuntimeError as e:
                 # Check if it's a bfloat16 error
@@ -219,11 +228,20 @@ class GotOcrParser(DocumentParser):
                         torch.set_default_dtype(torch.float16)
                         
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                            result = self._model.chat(
-                                self._tokenizer,
-                                str(file_path),
-                                ocr_type
-                            )
+                            # Use format=True parameter when ocr_type is "format"
+                            if ocr_type == "format":
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type=ocr_type,
+                                    format=True
+                                )
+                            else:
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type=ocr_type
+                                )
                         
                         # Restore default dtype
                         torch.set_default_dtype(original_dtype)
