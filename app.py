@@ -4,6 +4,12 @@ import subprocess
 import shutil
 from pathlib import Path
 import urllib.request
+import logging
+
+# Configure logging - Add this section to suppress httpx logs
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Raise level to WARNING to suppress INFO logs
+logging.getLogger("urllib3").setLevel(logging.WARNING)  # Also suppress urllib3 logs which might be used
+logging.getLogger("httpcore").setLevel(logging.WARNING)  # httpcore is used by httpx
 
 # Get the current directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
