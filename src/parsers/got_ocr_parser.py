@@ -26,6 +26,7 @@ class GotOcrParser(DocumentParser):
     # Path to the GOT-OCR repository
     _repo_path = None
     _weights_path = None
+    _demo_script_path = None
     
     @classmethod
     def get_name(cls) -> str:
@@ -79,9 +80,43 @@ class GotOcrParser(DocumentParser):
             return False
     
     @classmethod
+    def _find_demo_script(cls, base_dir):
+        """Find the run_ocr_2.0.py script by searching the repository.
+        
+        Args:
+            base_dir: The base directory to start searching from
+            
+        Returns:
+            Path to the script if found, None otherwise
+        """
+        logger.info(f"Searching for run_ocr_2.0.py in {base_dir}")
+        script_paths = []
+        
+        # Walk through all directories and find all instances of run_ocr_2.0.py
+        for root, dirs, files in os.walk(base_dir):
+            if "run_ocr_2.0.py" in files:
+                script_path = os.path.join(root, "run_ocr_2.0.py")
+                script_paths.append(script_path)
+                logger.info(f"Found run_ocr_2.0.py at: {script_path}")
+        
+        if not script_paths:
+            logger.error("Could not find run_ocr_2.0.py in the repository")
+            return None
+            
+        # If there are multiple instances, try to find the one in demo folder
+        for path in script_paths:
+            if os.path.join("demo", "run_ocr_2.0.py") in path:
+                logger.info(f"Selected demo script at: {path}")
+                return path
+                
+        # If no clear demo folder, just use the first one found
+        logger.info(f"Selected demo script at: {script_paths[0]}")
+        return script_paths[0]
+    
+    @classmethod
     def _setup_repository(cls) -> bool:
         """Set up the GOT-OCR2.0 repository if it's not already set up."""
-        if cls._repo_path is not None and os.path.exists(cls._repo_path):
+        if cls._repo_path is not None and os.path.exists(cls._repo_path) and cls._demo_script_path is not None:
             return True
         
         try:
@@ -99,6 +134,14 @@ class GotOcrParser(DocumentParser):
                 logger.info("GOT-OCR2.0 repository already exists, skipping clone")
             
             cls._repo_path = repo_dir
+            
+            # Find the demo script
+            cls._demo_script_path = cls._find_demo_script(repo_dir)
+            if cls._demo_script_path is None:
+                logger.error("Could not find the run_ocr_2.0.py script in the cloned repository")
+                return False
+                
+            logger.info(f"Using demo script: {cls._demo_script_path}")
             
             # Set up the weights directory
             weights_dir = os.path.join(repo_dir, "GOT_weights")
@@ -178,10 +221,17 @@ class GotOcrParser(DocumentParser):
         try:
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             
+            # Check if demo script exists
+            if not self._demo_script_path or not os.path.exists(self._demo_script_path):
+                logger.warning("Demo script path not found, trying to locate it again")
+                self._demo_script_path = self._find_demo_script(self._repo_path)
+                if not self._demo_script_path:
+                    raise RuntimeError("Could not find the run_ocr_2.0.py script in the repository")
+            
             # Create the command for running the GOT-OCR script
             cmd = [
                 sys.executable,
-                os.path.join(self._repo_path, "GOT", "demo", "run_ocr_2.0.py"),
+                self._demo_script_path,
                 "--model-name", self._weights_path,
                 "--image-file", str(file_path),
                 "--type", ocr_type
@@ -213,7 +263,18 @@ class GotOcrParser(DocumentParser):
             # If render was requested, find and return the path to the HTML file
             if render:
                 # The rendered results are in /results/demo.html according to the README
-                html_result_path = os.path.join(self._repo_path, "results", "demo.html")
+                results_dir = os.path.join(os.path.dirname(self._demo_script_path), "..", "..", "results")
+                if not os.path.exists(results_dir):
+                    # Try to find results directory
+                    for root, dirs, files in os.walk(self._repo_path):
+                        if "demo.html" in files:
+                            html_result_path = os.path.join(root, "demo.html")
+                            logger.info(f"Found rendered HTML at: {html_result_path}")
+                            with open(html_result_path, 'r') as f:
+                                html_content = f.read()
+                            return html_content
+                
+                html_result_path = os.path.join(results_dir, "demo.html")
                 if os.path.exists(html_result_path):
                     with open(html_result_path, 'r') as f:
                         html_content = f.read()
@@ -233,6 +294,21 @@ class GotOcrParser(DocumentParser):
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running GOT-OCR command: {str(e)}")
             logger.error(f"Stderr: {e.stderr}")
+            
+            # Print repository structure for debugging
+            logger.error("Repository structure for debugging:")
+            try:
+                subprocess.run(
+                    ["find", self._repo_path, "-type", "f", "-name", "*.py"],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                structure_output = subprocess.getoutput(f"find {self._repo_path} -type f -name '*.py'")
+                logger.error(f"Python files in repository:\n{structure_output}")
+            except Exception as debug_e:
+                logger.error(f"Error getting repository structure: {debug_e}")
+                
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
             
         except Exception as e:
