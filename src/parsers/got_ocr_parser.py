@@ -140,32 +140,25 @@ class GotOcrParser(DocumentParser):
                     logger.warning(f"Could not inspect original chat method: {e}")
                 
                 # Define a completely new patched chat method that avoids parameter conflicts
-                def patched_chat(self, tokenizer, image_path, **kwargs):
+                def patched_chat(self, tokenizer, image_path, ocr_type, **kwargs):
                     """A patched version of chat method that forces float16 precision"""
-                    ocr_type_val = kwargs.get('ocr_type', 'ocr')  # Default to 'ocr' if not specified
-                    
-                    # Remove ocr_type from kwargs to avoid duplication
-                    kwargs_copy = kwargs.copy()
-                    if 'ocr_type' in kwargs_copy:
-                        del kwargs_copy['ocr_type']
-                    
-                    logger.info(f"Using patched chat method with float16, ocr_type={ocr_type_val}")
+                    logger.info(f"Using patched chat method with float16, ocr_type={ocr_type}")
                     
                     # Set explicit autocast dtype
                     if hasattr(torch.amp, 'autocast'):
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             try:
-                                # Always use ocr_type as third positional argument per original signature
-                                return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
+                                # Pass all arguments directly to maintain signature
+                                return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
                             except TypeError as e:
                                 logger.warning(f"First call approach failed: {e}, trying alternative approach")
                                 try:
                                     # Try passing image_path as string in case that's the issue
-                                    return original_chat(self, tokenizer, str(image_path), ocr_type_val, **kwargs_copy)
+                                    return original_chat(self, tokenizer, str(image_path), ocr_type, **kwargs)
                                 except Exception as e2:
                                     logger.warning(f"Second call approach also failed: {e2}")
-                                    # Fall back to just passing the original arguments unchanged
-                                    return original_chat(self, tokenizer, image_path, **kwargs)
+                                    # Fall back to original method
+                                    return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
                             except RuntimeError as e:
                                 if "bfloat16" in str(e):
                                     logger.error(f"BFloat16 error encountered despite patching: {e}")
@@ -175,16 +168,16 @@ class GotOcrParser(DocumentParser):
                     else:
                         # Same approach without autocast
                         try:
-                            # Always use ocr_type as third positional argument
-                            return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
+                            # Direct call with all positional args
+                            return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
                         except TypeError as e:
                             logger.warning(f"Call without autocast failed: {e}, trying alternative approach")
                             try:
                                 # Try passing image_path as string in case that's the issue
-                                return original_chat(self, tokenizer, str(image_path), ocr_type_val, **kwargs_copy)
+                                return original_chat(self, tokenizer, str(image_path), ocr_type, **kwargs)
                             except:
-                                # Fall back to just passing the original arguments unchanged
-                                return original_chat(self, tokenizer, image_path, **kwargs)
+                                # Fall back to original method
+                                return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
                 
                 # Apply the patch
                 import types
