@@ -4,6 +4,8 @@ import json
 import os
 import tempfile
 import logging
+import sys
+import importlib
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
@@ -11,17 +13,22 @@ from src.parsers.parser_registry import ParserRegistry
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Check if required packages are installed
+# Global flag for NumPy availability
+NUMPY_AVAILABLE = False
+NUMPY_VERSION = None
+
+# Try to import NumPy
 try:
-    # First check for numpy as it's required by torch
-    try:
-        import numpy as np
-        NUMPY_AVAILABLE = True
-        logger.info(f"NumPy version {np.__version__} is available")
-    except ImportError:
-        NUMPY_AVAILABLE = False
-        logger.error("NumPy is not available. This is required for GOT-OCR.")
-    
+    import numpy as np
+    NUMPY_AVAILABLE = True
+    NUMPY_VERSION = np.__version__
+    logger.info(f"NumPy version {NUMPY_VERSION} is available")
+except ImportError:
+    NUMPY_AVAILABLE = False
+    logger.error("NumPy is not available. This is required for GOT-OCR.")
+
+# Check if required packages are installed
+try:    
     import torch
     import transformers
     from transformers import AutoModel, AutoTokenizer
@@ -37,7 +44,6 @@ try:
     GOT_AVAILABLE = True and NUMPY_AVAILABLE
 except ImportError:
     GOT_AVAILABLE = False
-    NUMPY_AVAILABLE = False
     logger.warning("GOT-OCR dependencies not installed. The parser will not be available.")
 
 class GotOcrParser(DocumentParser):
@@ -72,6 +78,8 @@ class GotOcrParser(DocumentParser):
     @classmethod
     def _load_model(cls):
         """Load the GOT-OCR model and tokenizer if not already loaded."""
+        global NUMPY_AVAILABLE
+        
         if not NUMPY_AVAILABLE:
             raise ImportError("NumPy is not available. This is required for GOT-OCR.")
             
@@ -127,15 +135,73 @@ class GotOcrParser(DocumentParser):
         
         logger.info("GOT-OCR model released from memory")
     
+    def _try_install_numpy(self):
+        """Attempt to install NumPy using pip."""
+        global NUMPY_AVAILABLE, NUMPY_VERSION
+        
+        logger.warning("Attempting to install NumPy...")
+        try:
+            import subprocess
+            # Try to install numpy without specifying a version
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "numpy", "--no-cache-dir"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"NumPy installation result: {result.stdout}")
+            
+            # Try to import numpy again
+            importlib.invalidate_caches()
+            import numpy as np
+            importlib.reload(np)
+            
+            NUMPY_AVAILABLE = True
+            NUMPY_VERSION = np.__version__
+            logger.info(f"NumPy installed successfully: version {NUMPY_VERSION}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to install NumPy: {str(e)}")
+            if hasattr(e, 'stderr'):
+                logger.error(f"Installation error output: {e.stderr}")
+            return False
+    
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using GOT-OCR 2.0."""
+        global NUMPY_AVAILABLE, GOT_AVAILABLE
+        
+        # Check NumPy availability and try to install if not available
+        if not NUMPY_AVAILABLE:
+            logger.warning("NumPy not available, attempting to install it...")
+            if self._try_install_numpy():
+                # Update GOT availability flag if NumPy is now available
+                try:
+                    import torch
+                    import transformers
+                    GOT_AVAILABLE = True
+                    logger.info("Updated GOT availability after installing NumPy: Available")
+                except ImportError:
+                    GOT_AVAILABLE = False
+                    logger.error("Updated GOT availability after installing NumPy: Not Available (missing other dependencies)")
+            else:
+                logger.error("Failed to install NumPy. Cannot proceed with GOT-OCR.")
+                raise ImportError(
+                    "NumPy is not available and could not be installed automatically. "
+                    "Please ensure NumPy is installed in your environment. "
+                    "Add the following to your logs for debugging: NUMPY_INSTALLATION_FAILED"
+                )
+        
+        # Check overall GOT availability
         if not GOT_AVAILABLE:
             if not NUMPY_AVAILABLE:
+                logger.error("NumPy is still not available after installation attempt.")
                 raise ImportError(
                     "NumPy is not available. This is required for GOT-OCR. "
-                    "Please ensure NumPy is installed in your environment."
+                    "Please ensure NumPy is installed in your environment. "
+                    "Environment details: Python " + sys.version
                 )
             else:
+                logger.error("Other GOT-OCR dependencies missing even though NumPy is available.")
                 raise ImportError(
                     "GOT-OCR dependencies not installed. Please install required packages: "
                     "torch, transformers, tiktoken, verovio, accelerate"
@@ -157,6 +223,16 @@ class GotOcrParser(DocumentParser):
         ocr_type = "format" if ocr_method == "format" else "ocr"
         
         try:
+            # Check if numpy needs to be reloaded
+            if 'numpy' in sys.modules:
+                logger.info("NumPy module found in sys.modules, attempting to reload...")
+                try:
+                    importlib.reload(sys.modules['numpy'])
+                    import numpy as np
+                    logger.info(f"NumPy reloaded successfully: version {np.__version__}")
+                except Exception as e:
+                    logger.error(f"Error reloading NumPy: {str(e)}")
+            
             # Load the model
             self._load_model()
             
