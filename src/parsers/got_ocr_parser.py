@@ -11,6 +11,17 @@ import importlib
 os.environ["TORCH_CUDA_ARCH_LIST"] = "7.0+PTX"  # For T4 GPU compatibility
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"  
+os.environ["PYTORCH_DISPATCHER_DISABLE_TORCH_FUNCTION_AUTOGRAD_FALLBACK"] = "1"  # Disable fallbacks that might use bfloat16
+
+# Add patch for bfloat16 at the module level
+if 'torch' in sys.modules:
+    torch_module = sys.modules['torch']
+    if hasattr(torch_module, 'bfloat16'):
+        # Create a reference to the original bfloat16 function
+        original_bfloat16 = torch_module.bfloat16
+        # Replace it with float16
+        torch_module.bfloat16 = torch_module.float16
+        logger.info("Patched torch.bfloat16 to use torch.float16 instead")
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
@@ -117,6 +128,39 @@ class GotOcrParser(DocumentParser):
                 torch.set_default_tensor_type(torch.FloatTensor)
                 torch.set_default_dtype(torch.float16)
                 
+                # Aggressively patch torch.autocast to always use float16
+                original_autocast = torch.amp.autocast if hasattr(torch.amp, 'autocast') else None
+                
+                if original_autocast:
+                    def patched_autocast(*args, **kwargs):
+                        # Force dtype to float16
+                        kwargs['dtype'] = torch.float16
+                        return original_autocast(*args, **kwargs)
+                    
+                    torch.amp.autocast = patched_autocast
+                    logger.info("Patched torch.amp.autocast to always use float16")
+                
+                # Patch tensor casting methods for bfloat16
+                if hasattr(torch, 'Tensor'):
+                    if hasattr(torch.Tensor, 'to'):
+                        original_to = torch.Tensor.to
+                        def patched_to(self, *args, **kwargs):
+                            # If the first arg is a dtype and it's bfloat16, replace with float16
+                            if args and args[0] == torch.bfloat16:
+                                logger.warning("Intercepted attempt to cast tensor to bfloat16, using float16 instead")
+                                args = list(args)
+                                args[0] = torch.float16
+                                args = tuple(args)
+                            # If dtype is specified in kwargs and it's bfloat16, replace with float16
+                            if kwargs.get('dtype') == torch.bfloat16:
+                                logger.warning("Intercepted attempt to cast tensor to bfloat16, using float16 instead")
+                                kwargs['dtype'] = torch.float16
+                            return original_to(self, *args, **kwargs)
+                        
+                        torch.Tensor.to = patched_to
+                        logger.info("Patched torch.Tensor.to method to prevent bfloat16 usage")
+                
+                # Load the model with explicit float16 dtype
                 cls._model = AutoModel.from_pretrained(
                     'stepfun-ai/GOT-OCR2_0', 
                     trust_remote_code=True, 
@@ -126,6 +170,35 @@ class GotOcrParser(DocumentParser):
                     pad_token_id=cls._tokenizer.eos_token_id,
                     torch_dtype=torch.float16  # Explicitly specify float16 dtype
                 )
+                
+                # Ensure all model parameters are float16
+                for param in cls._model.parameters():
+                    param.data = param.data.to(torch.float16)
+                
+                # Examine model internals to find any direct bfloat16 usage
+                def find_and_patch_bfloat16_attributes(module, path=""):
+                    for name, child in module.named_children():
+                        child_path = f"{path}.{name}" if path else name
+                        # Check if any attribute contains "bfloat16" in its name
+                        for attr_name in dir(child):
+                            if "bfloat16" in attr_name.lower():
+                                try:
+                                    # Try to get the attribute
+                                    attr_value = getattr(child, attr_name)
+                                    logger.warning(f"Found potential bfloat16 usage at {child_path}.{attr_name}")
+                                    # Try to replace with float16 equivalent if it exists
+                                    float16_attr_name = attr_name.replace("bfloat16", "float16").replace("bf16", "fp16")
+                                    if hasattr(child, float16_attr_name):
+                                        logger.info(f"Replacing {attr_name} with {float16_attr_name}")
+                                        setattr(child, attr_name, getattr(child, float16_attr_name))
+                                except Exception as e:
+                                    logger.error(f"Error examining attribute {attr_name}: {e}")
+                        # Recursively check child modules
+                        find_and_patch_bfloat16_attributes(child, child_path)
+                
+                # Apply the internal examination
+                logger.info("Examining model for potential bfloat16 usage...")
+                find_and_patch_bfloat16_attributes(cls._model)
                 
                 # Patch the model's chat method to use float16 instead of bfloat16
                 logger.info("Patching model to use float16 instead of bfloat16")
@@ -143,6 +216,11 @@ class GotOcrParser(DocumentParser):
                 def patched_chat(self, tokenizer, image_path, ocr_type, **kwargs):
                     """A patched version of chat method that forces float16 precision"""
                     logger.info(f"Using patched chat method with float16, ocr_type={ocr_type}")
+                    
+                    # Force any bfloat16 tensors to float16
+                    if hasattr(torch, 'bfloat16') and torch.bfloat16 != torch.float16:
+                        torch.bfloat16 = torch.float16
+                        logger.info("Forcing torch.bfloat16 to be torch.float16 within chat method")
                     
                     # Set explicit autocast dtype
                     if hasattr(torch.amp, 'autocast'):
@@ -162,11 +240,16 @@ class GotOcrParser(DocumentParser):
                             except RuntimeError as e:
                                 if "bfloat16" in str(e):
                                     logger.error(f"BFloat16 error encountered despite patching: {e}")
+                                    # More aggressive handling
+                                    if hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'autocast'):
+                                        logger.info("Attempting with torch.cuda.amp.autocast as last resort")
+                                        with torch.cuda.amp.autocast(dtype=torch.float16):
+                                            return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
                                     raise RuntimeError(f"GPU doesn't support bfloat16: {e}")
                                 else:
                                     raise
                     else:
-                        # Same approach without autocast
+                        # If autocast is not available, try to manually ensure everything is float16
                         try:
                             # Direct call without 'self' as first arg
                             return original_chat(tokenizer, image_path, ocr_type, **kwargs)
@@ -183,11 +266,27 @@ class GotOcrParser(DocumentParser):
                 import types
                 cls._model.chat = types.MethodType(patched_chat, cls._model)
                 
+                # Check if the model has a cast_to_bfloat16 method and override it
+                if hasattr(cls._model, 'cast_to_bfloat16'):
+                    original_cast = cls._model.cast_to_bfloat16
+                    def patched_cast(self, *args, **kwargs):
+                        logger.info("Intercepted attempt to cast model to bfloat16, using float16 instead")
+                        # If the model has a cast_to_float16 method, use that instead
+                        if hasattr(self, 'cast_to_float16'):
+                            return self.cast_to_float16(*args, **kwargs)
+                        # Otherwise, cast all parameters manually
+                        for param in self.parameters():
+                            param.data = param.data.to(torch.float16)
+                        return self
+                    
+                    cls._model.cast_to_bfloat16 = types.MethodType(patched_cast, cls._model)
+                    logger.info("Patched model.cast_to_bfloat16 method")
+                
                 # Set model to evaluation mode
                 if device_map == 'cuda':
-                    cls._model = cls._model.eval().cuda()
+                    cls._model = cls._model.eval().cuda().half()  # Explicitly cast to half precision (float16)
                 else:
-                    cls._model = cls._model.eval()
+                    cls._model = cls._model.eval().half()  # Explicitly cast to half precision (float16)
                 
                 # Reset default dtype to float32 after model loading
                 torch.set_default_dtype(torch.float32)
@@ -377,22 +476,40 @@ class GotOcrParser(DocumentParser):
             try:
                 # Use ocr_type as a positional argument based on the correct signature
                 logger.info(f"Using OCR method: {ocr_type}")
-                result = self._model.chat(
-                    self._tokenizer, 
-                    str(file_path), 
-                    ocr_type  # Pass as positional arg, not keyword
-                )
+                
+                # Temporarily force any PyTorch operations to use float16
+                with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                    result = self._model.chat(
+                        self._tokenizer, 
+                        str(file_path), 
+                        ocr_type  # Pass as positional arg, not keyword
+                    )
             except RuntimeError as e:
                 if "bfloat16" in str(e) or "BFloat16" in str(e):
                     logger.warning("Caught bfloat16 error, trying to force float16 with autocast")
                     # Try with explicit autocast
                     try:
+                        # More aggressive approach with multiple settings
+                        
+                        # Ensure bfloat16 is aliased to float16 globally
+                        if hasattr(torch, 'bfloat16') and torch.bfloat16 != torch.float16:
+                            logger.info("Forcing bfloat16 to be float16 in exception handler")
+                            torch.bfloat16 = torch.float16
+                        
+                        # Apply patch to the model's config if it exists
+                        if hasattr(self._model, 'config'):
+                            if hasattr(self._model.config, 'torch_dtype'):
+                                logger.info(f"Setting model config dtype from {self._model.config.torch_dtype} to float16")
+                                self._model.config.torch_dtype = torch.float16
+                        
+                        # Try with all possible autocast combinations
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             # Temporarily set default dtype
                             old_dtype = torch.get_default_dtype()
                             torch.set_default_dtype(torch.float16)
                             
                             # Call with positional argument for ocr_type
+                            logger.info("Using fallback with autocast and default dtype set to float16")
                             result = self._model.chat(
                                 self._tokenizer,
                                 str(file_path),
@@ -403,7 +520,22 @@ class GotOcrParser(DocumentParser):
                             torch.set_default_dtype(old_dtype)
                     except Exception as inner_e:
                         logger.error(f"Error in fallback method: {str(inner_e)}")
-                        raise RuntimeError(f"Error processing with GOT-OCR using fallback: {str(inner_e)}")
+                        
+                        # Last resort: try using torchscript if available
+                        try:
+                            logger.info("Attempting final approach with model.half() and direct call")
+                            # Force model to half precision
+                            self._model = self._model.half()
+                            
+                            # Try direct call with the original method
+                            result = self._model.chat(
+                                self._tokenizer,
+                                str(file_path),
+                                ocr_type
+                            )
+                        except Exception as final_e:
+                            logger.error(f"All fallback approaches failed: {str(final_e)}")
+                            raise RuntimeError(f"Error processing with GOT-OCR using fallback: {str(final_e)}")
                 else:
                     # Re-raise other errors
                     raise
