@@ -20,7 +20,7 @@ fi
 
 # Install NumPy first as it's required by many other packages
 echo "Installing NumPy..."
-pip install -q -U numpy --no-cache-dir
+pip install -q -U "numpy<2.0.0" --no-cache-dir
 echo "NumPy installed successfully"
 
 # Install Python dependencies

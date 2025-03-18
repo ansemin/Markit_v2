@@ -152,9 +152,9 @@ class GotOcrParser(DocumentParser):
         logger.warning("Attempting to install NumPy...")
         try:
             import subprocess
-            # Try to install numpy without specifying a version
+            # Try to install numpy with explicit version constraint for compatibility with torchvision
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-q", "numpy", "--no-cache-dir"],
+                [sys.executable, "-m", "pip", "install", "-q", "numpy<2.0.0", "--no-cache-dir"],
                 capture_output=True,
                 text=True,
                 check=True
