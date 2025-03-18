@@ -5,6 +5,9 @@ set -e
 
 echo "Starting setup process..."
 
+# Enable more verbose logging
+set -x
+
 # Check if running with sudo/root permissions for system dependencies
 if [ "$EUID" -eq 0 ]; then
     # Install system dependencies
@@ -12,7 +15,8 @@ if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y \
         wget \
         pkg-config \
-        git
+        git \
+        tree  # Add tree for directory structure visualization
     echo "System dependencies installed successfully"
 else
     echo "Not running as root. Skipping system dependencies installation."
@@ -41,6 +45,42 @@ echo "Installing Hugging Face CLI..."
 pip install -q -U "huggingface_hub[cli]"
 echo "Hugging Face CLI installed successfully"
 
+# Add debug section for GOT-OCR repo
+echo "===== GOT-OCR Repository Debugging ====="
+
+# Clone the repository for inspection (if it doesn't exist)
+TEMP_DIR="/tmp"
+REPO_DIR="${TEMP_DIR}/GOT-OCR2.0"
+
+if [ ! -d "$REPO_DIR" ]; then
+    echo "Cloning GOT-OCR2.0 repository for debugging..."
+    git clone https://github.com/Ucas-HaoranWei/GOT-OCR2.0.git "$REPO_DIR"
+else
+    echo "GOT-OCR2.0 repository already exists at $REPO_DIR"
+fi
+
+# Check the repository structure
+echo "GOT-OCR2.0 repository structure:"
+if command -v tree &> /dev/null; then
+    tree -L 3 "$REPO_DIR"
+else
+    find "$REPO_DIR" -type d -maxdepth 3 | sort
+fi
+
+# Check if the demo script exists
+DEMO_SCRIPT="${REPO_DIR}/GOT/demo/run_ocr_2.0.py"
+if [ -f "$DEMO_SCRIPT" ]; then
+    echo "Demo script found at: $DEMO_SCRIPT"
+else
+    echo "ERROR: Demo script not found at: $DEMO_SCRIPT"
+    
+    # Search for the script in the repository
+    echo "Searching for run_ocr_2.0.py in the repository..."
+    find "$REPO_DIR" -name "run_ocr_2.0.py" -type f
+fi
+
+echo "===== End of GOT-OCR Debugging ====="
+
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
     echo "Installing project in development mode..."
@@ -61,5 +101,8 @@ if [ ! -f .env ]; then
         touch .env
     fi
 fi
+
+# Return to normal logging
+set +x
 
 echo "Setup process completed successfully!" 

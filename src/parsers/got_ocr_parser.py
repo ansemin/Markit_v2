@@ -15,6 +15,8 @@ import latex2markdown
 
 # Configure logging
 logger = logging.getLogger(__name__)
+# Set logger level to DEBUG for more verbose output
+logger.setLevel(logging.DEBUG)
 
 class GotOcrParser(DocumentParser):
     """Parser implementation using GOT-OCR 2.0 for document text extraction using GitHub repository.
@@ -26,7 +28,6 @@ class GotOcrParser(DocumentParser):
     # Path to the GOT-OCR repository
     _repo_path = None
     _weights_path = None
-    _demo_script_path = None
     
     @classmethod
     def get_name(cls) -> str:
@@ -80,68 +81,67 @@ class GotOcrParser(DocumentParser):
             return False
     
     @classmethod
-    def _find_demo_script(cls, base_dir):
-        """Find the run_ocr_2.0.py script by searching the repository.
-        
-        Args:
-            base_dir: The base directory to start searching from
-            
-        Returns:
-            Path to the script if found, None otherwise
-        """
-        logger.info(f"Searching for run_ocr_2.0.py in {base_dir}")
-        script_paths = []
-        
-        # Walk through all directories and find all instances of run_ocr_2.0.py
-        for root, dirs, files in os.walk(base_dir):
-            if "run_ocr_2.0.py" in files:
-                script_path = os.path.join(root, "run_ocr_2.0.py")
-                script_paths.append(script_path)
-                logger.info(f"Found run_ocr_2.0.py at: {script_path}")
-        
-        if not script_paths:
-            logger.error("Could not find run_ocr_2.0.py in the repository")
-            return None
-            
-        # If there are multiple instances, try to find the one in demo folder
-        for path in script_paths:
-            if os.path.join("demo", "run_ocr_2.0.py") in path:
-                logger.info(f"Selected demo script at: {path}")
-                return path
-                
-        # If no clear demo folder, just use the first one found
-        logger.info(f"Selected demo script at: {script_paths[0]}")
-        return script_paths[0]
-    
-    @classmethod
     def _setup_repository(cls) -> bool:
         """Set up the GOT-OCR2.0 repository if it's not already set up."""
-        if cls._repo_path is not None and os.path.exists(cls._repo_path) and cls._demo_script_path is not None:
+        if cls._repo_path is not None and os.path.exists(cls._repo_path):
+            logger.debug(f"Repository already set up at: {cls._repo_path}")
             return True
         
         try:
             # Create a temporary directory for the repository
             repo_dir = os.path.join(tempfile.gettempdir(), "GOT-OCR2.0")
+            logger.debug(f"Repository directory: {repo_dir}")
             
             # Check if the repository already exists
             if not os.path.exists(repo_dir):
-                logger.info("Cloning GOT-OCR2.0 repository...")
+                logger.info(f"Cloning GOT-OCR2.0 repository to {repo_dir}...")
                 subprocess.run(
                     ["git", "clone", "https://github.com/Ucas-HaoranWei/GOT-OCR2.0.git", repo_dir],
                     check=True
                 )
             else:
-                logger.info("GOT-OCR2.0 repository already exists, skipping clone")
+                logger.info(f"GOT-OCR2.0 repository already exists at {repo_dir}, skipping clone")
             
             cls._repo_path = repo_dir
             
-            # Find the demo script
-            cls._demo_script_path = cls._find_demo_script(repo_dir)
-            if cls._demo_script_path is None:
-                logger.error("Could not find the run_ocr_2.0.py script in the cloned repository")
-                return False
-                
-            logger.info(f"Using demo script: {cls._demo_script_path}")
+            # Debug: List repository contents
+            logger.debug("Repository contents:")
+            try:
+                result = subprocess.run(
+                    ["find", repo_dir, "-type", "d", "-maxdepth", "3"],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                for line in result.stdout.splitlines():
+                    logger.debug(f"  {line}")
+            except Exception as e:
+                logger.warning(f"Could not list repository contents: {e}")
+            
+            # Check if the demo script exists
+            demo_script = os.path.join(repo_dir, "GOT", "demo", "run_ocr_2.0.py")
+            if os.path.exists(demo_script):
+                logger.info(f"Found demo script at: {demo_script}")
+            else:
+                logger.warning(f"Demo script not found at expected path: {demo_script}")
+                # Try to find it
+                logger.info("Searching for run_ocr_2.0.py in the repository...")
+                try:
+                    find_result = subprocess.run(
+                        ["find", repo_dir, "-name", "run_ocr_2.0.py", "-type", "f"],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    if find_result.stdout.strip():
+                        found_paths = find_result.stdout.strip().splitlines()
+                        logger.info(f"Found script at alternative locations: {found_paths}")
+                        # Use the first found path as fallback
+                        if found_paths:
+                            alternative_path = found_paths[0]
+                            logger.info(f"Using alternative path: {alternative_path}")
+                except Exception as e:
+                    logger.warning(f"Could not search for script: {e}")
             
             # Set up the weights directory
             weights_dir = os.path.join(repo_dir, "GOT_weights")
@@ -149,6 +149,7 @@ class GotOcrParser(DocumentParser):
                 os.makedirs(weights_dir, exist_ok=True)
             
             cls._weights_path = weights_dir
+            logger.debug(f"Weights directory: {weights_dir}")
             
             # Check if weights exist, if not download them
             weight_files = [f for f in os.listdir(weights_dir) if f.endswith(".bin") or f.endswith(".safetensors")]
@@ -221,17 +222,35 @@ class GotOcrParser(DocumentParser):
         try:
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             
-            # Check if demo script exists
-            if not self._demo_script_path or not os.path.exists(self._demo_script_path):
-                logger.warning("Demo script path not found, trying to locate it again")
-                self._demo_script_path = self._find_demo_script(self._repo_path)
-                if not self._demo_script_path:
-                    raise RuntimeError("Could not find the run_ocr_2.0.py script in the repository")
-            
             # Create the command for running the GOT-OCR script
+            script_path = os.path.join(self._repo_path, "GOT", "demo", "run_ocr_2.0.py")
+            
+            # Check if the script exists at the expected path
+            if not os.path.exists(script_path):
+                logger.error(f"Script not found at: {script_path}")
+                
+                # Try to find the script within the repository
+                logger.info("Searching for run_ocr_2.0.py in the repository...")
+                try:
+                    find_result = subprocess.run(
+                        ["find", self._repo_path, "-name", "run_ocr_2.0.py", "-type", "f"],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    found_paths = find_result.stdout.strip().splitlines()
+                    if found_paths:
+                        script_path = found_paths[0]
+                        logger.info(f"Found script at alternative location: {script_path}")
+                    else:
+                        raise FileNotFoundError(f"Could not find run_ocr_2.0.py in repository: {self._repo_path}")
+                except Exception as search_e:
+                    logger.error(f"Error searching for script: {str(search_e)}")
+                    raise FileNotFoundError(f"Script not found and search failed: {str(search_e)}")
+            
             cmd = [
                 sys.executable,
-                self._demo_script_path,
+                script_path,
                 "--model-name", self._weights_path,
                 "--image-file", str(file_path),
                 "--type", ocr_type
@@ -263,18 +282,7 @@ class GotOcrParser(DocumentParser):
             # If render was requested, find and return the path to the HTML file
             if render:
                 # The rendered results are in /results/demo.html according to the README
-                results_dir = os.path.join(os.path.dirname(self._demo_script_path), "..", "..", "results")
-                if not os.path.exists(results_dir):
-                    # Try to find results directory
-                    for root, dirs, files in os.walk(self._repo_path):
-                        if "demo.html" in files:
-                            html_result_path = os.path.join(root, "demo.html")
-                            logger.info(f"Found rendered HTML at: {html_result_path}")
-                            with open(html_result_path, 'r') as f:
-                                html_content = f.read()
-                            return html_content
-                
-                html_result_path = os.path.join(results_dir, "demo.html")
+                html_result_path = os.path.join(self._repo_path, "results", "demo.html")
                 if os.path.exists(html_result_path):
                     with open(html_result_path, 'r') as f:
                         html_content = f.read()
@@ -294,21 +302,6 @@ class GotOcrParser(DocumentParser):
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running GOT-OCR command: {str(e)}")
             logger.error(f"Stderr: {e.stderr}")
-            
-            # Print repository structure for debugging
-            logger.error("Repository structure for debugging:")
-            try:
-                subprocess.run(
-                    ["find", self._repo_path, "-type", "f", "-name", "*.py"],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                structure_output = subprocess.getoutput(f"find {self._repo_path} -type f -name '*.py'")
-                logger.error(f"Python files in repository:\n{structure_output}")
-            except Exception as debug_e:
-                logger.error(f"Error getting repository structure: {debug_e}")
-                
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
             
         except Exception as e:
