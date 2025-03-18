@@ -28,6 +28,7 @@ class GotOcrParser(DocumentParser):
     # Path to the GOT-OCR repository
     _repo_path = None
     _weights_path = None
+    _got_parent_dir = None  # New variable to store the parent directory of the GOT module
     
     @classmethod
     def get_name(cls) -> str:
@@ -122,6 +123,7 @@ class GotOcrParser(DocumentParser):
             demo_script = os.path.join(repo_dir, "GOT", "demo", "run_ocr_2.0.py")
             if os.path.exists(demo_script):
                 logger.info(f"Found demo script at: {demo_script}")
+                cls._got_parent_dir = repo_dir  # Parent dir is the repo dir
             else:
                 logger.warning(f"Demo script not found at expected path: {demo_script}")
                 # Try to find it
@@ -140,6 +142,12 @@ class GotOcrParser(DocumentParser):
                         if found_paths:
                             alternative_path = found_paths[0]
                             logger.info(f"Using alternative path: {alternative_path}")
+                            
+                            # Set the parent directory for the GOT module
+                            # We need to set it to the directory that contains the GOT-OCR-2.0-master directory
+                            if "GOT-OCR-2.0-master" in alternative_path:
+                                cls._got_parent_dir = os.path.join(repo_dir, "GOT-OCR-2.0-master")
+                                logger.info(f"Parent directory for GOT module: {cls._got_parent_dir}")
                 except Exception as e:
                     logger.warning(f"Could not search for script: {e}")
             
@@ -248,56 +256,79 @@ class GotOcrParser(DocumentParser):
                     logger.error(f"Error searching for script: {str(search_e)}")
                     raise FileNotFoundError(f"Script not found and search failed: {str(search_e)}")
             
-            cmd = [
-                sys.executable,
-                script_path,
-                "--model-name", self._weights_path,
-                "--image-file", str(file_path),
-                "--type", ocr_type
-            ]
+            # Create a batch/shell script to run the Python script with the correct PYTHONPATH
+            # This ensures the GOT module can be imported
+            temp_script = None
+            try:
+                # Create a temporary script
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                    temp_script = f.name
+                    parent_dir = self._got_parent_dir or os.path.dirname(os.path.dirname(script_path))
+                    
+                    # Add commands to the script
+                    f.write("#!/bin/bash\n")
+                    f.write(f"cd {parent_dir}\n")  # Change to parent directory
+                    f.write("export PYTHONPATH=$PYTHONPATH:$(pwd)\n")  # Add current directory to PYTHONPATH
+                    
+                    # Build the command
+                    py_cmd = [sys.executable, script_path]
+                    py_cmd.extend(["--model-name", self._weights_path])
+                    py_cmd.extend(["--image-file", str(file_path)])
+                    py_cmd.extend(["--type", ocr_type])
+                    
+                    # Add render flag if required
+                    if render:
+                        py_cmd.append("--render")
+                    
+                    # Check if box or color is specified in kwargs
+                    if 'box' in kwargs and kwargs['box']:
+                        py_cmd.extend(["--box", str(kwargs['box'])])
+                    
+                    if 'color' in kwargs and kwargs['color']:
+                        py_cmd.extend(["--color", kwargs['color']])
+                    
+                    # Add the command to the script
+                    f.write(" ".join(py_cmd) + "\n")
+                
+                # Make the script executable
+                os.chmod(temp_script, 0o755)
+                
+                # Run the script
+                logger.info(f"Running command through wrapper script: {temp_script}")
+                process = subprocess.run(
+                    [temp_script],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Process the output
+                result = process.stdout.strip()
+                
+                # If render was requested, find and return the path to the HTML file
+                if render:
+                    # The rendered results are in /results/demo.html according to the README
+                    html_result_path = os.path.join(self._repo_path, "results", "demo.html")
+                    if os.path.exists(html_result_path):
+                        with open(html_result_path, 'r') as f:
+                            html_content = f.read()
+                        return html_content
+                    else:
+                        logger.warning(f"Rendered HTML file not found at {html_result_path}")
+                
+                # Check if we need to convert from LaTeX to Markdown
+                if ocr_type == "format":
+                    logger.info("Converting formatted LaTeX output to Markdown using latex2markdown")
+                    # Use the latex2markdown package instead of custom converter
+                    l2m = latex2markdown.LaTeX2Markdown(result)
+                    result = l2m.to_markdown()
+                
+                return result
             
-            # Add render flag if required
-            if render:
-                cmd.append("--render")
-            
-            # Check if box or color is specified in kwargs
-            if 'box' in kwargs and kwargs['box']:
-                cmd.extend(["--box", str(kwargs['box'])])
-            
-            if 'color' in kwargs and kwargs['color']:
-                cmd.extend(["--color", kwargs['color']])
-            
-            # Run the command and capture output
-            logger.info(f"Running command: {' '.join(cmd)}")
-            process = subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            
-            # Process the output
-            result = process.stdout.strip()
-            
-            # If render was requested, find and return the path to the HTML file
-            if render:
-                # The rendered results are in /results/demo.html according to the README
-                html_result_path = os.path.join(self._repo_path, "results", "demo.html")
-                if os.path.exists(html_result_path):
-                    with open(html_result_path, 'r') as f:
-                        html_content = f.read()
-                    return html_content
-                else:
-                    logger.warning(f"Rendered HTML file not found at {html_result_path}")
-            
-            # Check if we need to convert from LaTeX to Markdown
-            if ocr_type == "format":
-                logger.info("Converting formatted LaTeX output to Markdown using latex2markdown")
-                # Use the latex2markdown package instead of custom converter
-                l2m = latex2markdown.LaTeX2Markdown(result)
-                result = l2m.to_markdown()
-            
-            return result
+            finally:
+                # Clean up the temporary script
+                if temp_script and os.path.exists(temp_script):
+                    os.unlink(temp_script)
             
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running GOT-OCR command: {str(e)}")
