@@ -148,17 +148,17 @@ class GotOcrParser(DocumentParser):
                     if hasattr(torch.amp, 'autocast'):
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             try:
-                                # Pass all arguments directly to maintain signature
-                                return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
+                                # Pass arguments correctly - without 'self' as first arg since original_chat is already bound
+                                return original_chat(tokenizer, image_path, ocr_type, **kwargs)
                             except TypeError as e:
                                 logger.warning(f"First call approach failed: {e}, trying alternative approach")
                                 try:
                                     # Try passing image_path as string in case that's the issue
-                                    return original_chat(self, tokenizer, str(image_path), ocr_type, **kwargs)
+                                    return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
                                 except Exception as e2:
                                     logger.warning(f"Second call approach also failed: {e2}")
-                                    # Fall back to original method
-                                    return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
+                                    # Fall back to original method with keyword args
+                                    return original_chat(tokenizer, image_path, ocr_type=ocr_type, **kwargs)
                             except RuntimeError as e:
                                 if "bfloat16" in str(e):
                                     logger.error(f"BFloat16 error encountered despite patching: {e}")
@@ -168,16 +168,16 @@ class GotOcrParser(DocumentParser):
                     else:
                         # Same approach without autocast
                         try:
-                            # Direct call with all positional args
-                            return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
+                            # Direct call without 'self' as first arg
+                            return original_chat(tokenizer, image_path, ocr_type, **kwargs)
                         except TypeError as e:
                             logger.warning(f"Call without autocast failed: {e}, trying alternative approach")
                             try:
                                 # Try passing image_path as string in case that's the issue
-                                return original_chat(self, tokenizer, str(image_path), ocr_type, **kwargs)
+                                return original_chat(tokenizer, str(image_path), ocr_type, **kwargs)
                             except:
-                                # Fall back to original method
-                                return original_chat(self, tokenizer, image_path, ocr_type, **kwargs)
+                                # Fall back to keyword arguments
+                                return original_chat(tokenizer, image_path, ocr_type=ocr_type, **kwargs)
                 
                 # Apply the patch
                 import types
