@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 NUMPY_AVAILABLE = False
 NUMPY_VERSION = None
 
+# Initialize torch as None in global scope to prevent reference errors
+torch = None
+GOT_AVAILABLE = False
+
 # Try to import NumPy
 try:
     import numpy as np
@@ -29,7 +33,8 @@ except ImportError:
 
 # Check if required packages are installed
 try:    
-    import torch
+    import torch as torch_module
+    torch = torch_module  # Assign to global variable
     import transformers
     from transformers import AutoModel, AutoTokenizer
     
@@ -42,9 +47,9 @@ try:
         )
     
     GOT_AVAILABLE = True and NUMPY_AVAILABLE
-except ImportError:
+except ImportError as e:
     GOT_AVAILABLE = False
-    logger.warning("GOT-OCR dependencies not installed. The parser will not be available.")
+    logger.warning(f"GOT-OCR dependencies not installed: {str(e)}. The parser will not be available.")
 
 class GotOcrParser(DocumentParser):
     """Parser implementation using GOT-OCR 2.0."""
@@ -78,10 +83,13 @@ class GotOcrParser(DocumentParser):
     @classmethod
     def _load_model(cls):
         """Load the GOT-OCR model and tokenizer if not already loaded."""
-        global NUMPY_AVAILABLE
+        global NUMPY_AVAILABLE, torch
         
         if not NUMPY_AVAILABLE:
             raise ImportError("NumPy is not available. This is required for GOT-OCR.")
+            
+        if torch is None:
+            raise ImportError("PyTorch is not available. This is required for GOT-OCR.")
             
         if cls._model is None or cls._tokenizer is None:
             try:
@@ -124,13 +132,15 @@ class GotOcrParser(DocumentParser):
     @classmethod
     def release_model(cls):
         """Release the model from memory."""
+        global torch
+        
         if cls._model is not None:
             del cls._model
             cls._model = None
         if cls._tokenizer is not None:
             del cls._tokenizer
             cls._tokenizer = None
-        if torch.cuda.is_available():
+        if torch is not None and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'empty_cache'):
             torch.cuda.empty_cache()
         
         logger.info("GOT-OCR model released from memory")
@@ -166,23 +176,45 @@ class GotOcrParser(DocumentParser):
                 logger.error(f"Installation error output: {e.stderr}")
             return False
     
+    def _try_install_torch(self):
+        """Attempt to install PyTorch using pip."""
+        global torch
+        
+        logger.warning("Attempting to install PyTorch...")
+        try:
+            import subprocess
+            # Install PyTorch with version constraint as per the requirements
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "torch==2.0.1", "torchvision==0.15.2", "--no-cache-dir"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"PyTorch installation result: {result.stdout}")
+            
+            # Try to import torch again
+            importlib.invalidate_caches()
+            import torch as torch_module
+            torch = torch_module
+            
+            logger.info(f"PyTorch installed successfully: version {torch.__version__}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to install PyTorch: {str(e)}")
+            if hasattr(e, 'stderr'):
+                logger.error(f"Installation error output: {e.stderr}")
+            return False
+    
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using GOT-OCR 2.0."""
-        global NUMPY_AVAILABLE, GOT_AVAILABLE
+        global NUMPY_AVAILABLE, GOT_AVAILABLE, torch
         
         # Check NumPy availability and try to install if not available
         if not NUMPY_AVAILABLE:
             logger.warning("NumPy not available, attempting to install it...")
             if self._try_install_numpy():
-                # Update GOT availability flag if NumPy is now available
-                try:
-                    import torch
-                    import transformers
-                    GOT_AVAILABLE = True
-                    logger.info("Updated GOT availability after installing NumPy: Available")
-                except ImportError:
-                    GOT_AVAILABLE = False
-                    logger.error("Updated GOT availability after installing NumPy: Not Available (missing other dependencies)")
+                # NumPy is now available
+                logger.info("NumPy is now available")
             else:
                 logger.error("Failed to install NumPy. Cannot proceed with GOT-OCR.")
                 raise ImportError(
@@ -190,6 +222,32 @@ class GotOcrParser(DocumentParser):
                     "Please ensure NumPy is installed in your environment. "
                     "Add the following to your logs for debugging: NUMPY_INSTALLATION_FAILED"
                 )
+        
+        # Check PyTorch availability and try to install if not available
+        if torch is None:
+            logger.warning("PyTorch not available, attempting to install it...")
+            if self._try_install_torch():
+                # PyTorch is now available
+                logger.info("PyTorch is now available")
+            else:
+                logger.error("Failed to install PyTorch. Cannot proceed with GOT-OCR.")
+                raise ImportError(
+                    "PyTorch is not available and could not be installed automatically. "
+                    "Please ensure PyTorch is installed in your environment."
+                )
+        
+        # Update GOT availability flag after potential installations
+        try:
+            if NUMPY_AVAILABLE and torch is not None:
+                import transformers
+                GOT_AVAILABLE = True
+                logger.info("Updated GOT availability after installations: Available")
+            else:
+                GOT_AVAILABLE = False
+                logger.error("GOT availability after installations: Not Available (missing dependencies)")
+        except ImportError:
+            GOT_AVAILABLE = False
+            logger.error("Transformers not available. GOT-OCR cannot be used.")
         
         # Check overall GOT availability
         if not GOT_AVAILABLE:
@@ -200,15 +258,22 @@ class GotOcrParser(DocumentParser):
                     "Please ensure NumPy is installed in your environment. "
                     "Environment details: Python " + sys.version
                 )
+            elif torch is None:
+                logger.error("PyTorch is still not available after installation attempt.")
+                raise ImportError(
+                    "PyTorch is not available. This is required for GOT-OCR. "
+                    "Please ensure PyTorch is installed in your environment."
+                )
             else:
-                logger.error("Other GOT-OCR dependencies missing even though NumPy is available.")
+                logger.error("Other GOT-OCR dependencies missing even though NumPy and PyTorch are available.")
                 raise ImportError(
                     "GOT-OCR dependencies not installed. Please install required packages: "
-                    "torch, transformers, tiktoken, verovio, accelerate"
+                    "transformers, tiktoken, verovio, accelerate"
                 )
         
         # Check if CUDA is available
-        if not torch.cuda.is_available():
+        cuda_available = torch is not None and hasattr(torch, 'cuda') and hasattr(torch.cuda, 'is_available') and torch.cuda.is_available()
+        if not cuda_available:
             logger.warning("No GPU available. GOT-OCR performance may be severely degraded.")
         
         # Check file extension
@@ -247,15 +312,18 @@ class GotOcrParser(DocumentParser):
             # Return the result directly as markdown
             return result
                 
-        except torch.cuda.OutOfMemoryError:
-            self.release_model()  # Release memory
-            logger.error("GPU out of memory while processing with GOT-OCR")
-            raise RuntimeError(
-                "GPU out of memory while processing with GOT-OCR. "
-                "Try using a smaller image or a different parser."
-            )
-        except AttributeError as e:
-            if "get_max_length" in str(e):
+        except Exception as e:
+            error_type = type(e).__name__
+            
+            # Handle specific error types
+            if torch is not None and hasattr(torch, 'cuda') and error_type == 'OutOfMemoryError':
+                self.release_model()  # Release memory
+                logger.error("GPU out of memory while processing with GOT-OCR")
+                raise RuntimeError(
+                    "GPU out of memory while processing with GOT-OCR. "
+                    "Try using a smaller image or a different parser."
+                )
+            elif error_type == 'AttributeError' and "get_max_length" in str(e):
                 logger.error(f"Transformers version compatibility error: {str(e)}")
                 self.release_model()  # Release memory
                 raise RuntimeError(
@@ -266,13 +334,18 @@ class GotOcrParser(DocumentParser):
             else:
                 logger.error(f"Error processing document with GOT-OCR: {str(e)}")
                 raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
-        except Exception as e:
-            logger.error(f"Error processing document with GOT-OCR: {str(e)}")
-            raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
 
-# Register the parser with the registry if GOT is available
-if GOT_AVAILABLE:
-    ParserRegistry.register(GotOcrParser)
-    logger.info("GOT-OCR parser registered successfully")
-else:
-    logger.warning("GOT-OCR parser not registered: required dependencies not installed") 
+# Register the parser with the registry if dependencies are available
+try:
+    if NUMPY_AVAILABLE and torch is not None:
+        ParserRegistry.register(GotOcrParser)
+        logger.info("GOT-OCR parser registered successfully")
+    else:
+        missing_deps = []
+        if not NUMPY_AVAILABLE:
+            missing_deps.append("NumPy")
+        if torch is None:
+            missing_deps.append("PyTorch")
+        logger.warning(f"GOT-OCR parser not registered: missing dependencies: {', '.join(missing_deps)}")
+except Exception as e:
+    logger.error(f"Error registering GOT-OCR parser: {str(e)}") 
