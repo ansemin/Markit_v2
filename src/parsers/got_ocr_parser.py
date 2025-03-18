@@ -203,14 +203,13 @@ class GotOcrParser(DocumentParser):
                         result = self._model.chat(
                             self._tokenizer,
                             str(file_path),
-                            ocr_type=ocr_type,
-                            format=True
+                            ocr_type='format'
                         )
                     else:
                         result = self._model.chat(
                             self._tokenizer,
                             str(file_path),
-                            ocr_type=ocr_type
+                            ocr_type='ocr'
                         )
                 return result
             except RuntimeError as e:
@@ -233,14 +232,13 @@ class GotOcrParser(DocumentParser):
                                 result = self._model.chat(
                                     self._tokenizer,
                                     str(file_path),
-                                    ocr_type=ocr_type,
-                                    format=True
+                                    ocr_type='format'
                                 )
                             else:
                                 result = self._model.chat(
                                     self._tokenizer,
                                     str(file_path),
-                                    ocr_type=ocr_type
+                                    ocr_type='ocr'
                                 )
                         
                         # Restore default dtype
