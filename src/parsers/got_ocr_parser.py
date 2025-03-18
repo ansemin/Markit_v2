@@ -155,13 +155,13 @@ class GotOcrParser(DocumentParser):
                     if hasattr(torch.amp, 'autocast'):
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             try:
-                                # Try first as third positional argument (based on example code)
+                                # Always use ocr_type as third positional argument per original signature
                                 return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
                             except TypeError as e:
-                                logger.warning(f"First call approach failed: {e}, trying with keyword argument")
+                                logger.warning(f"First call approach failed: {e}, trying alternative approach")
                                 try:
-                                    # Try again with keyword argument
-                                    return original_chat(self, tokenizer, image_path, ocr_type=ocr_type_val, **kwargs_copy)
+                                    # Try passing image_path as string in case that's the issue
+                                    return original_chat(self, tokenizer, str(image_path), ocr_type_val, **kwargs_copy)
                                 except Exception as e2:
                                     logger.warning(f"Second call approach also failed: {e2}")
                                     # Fall back to just passing the original arguments unchanged
@@ -175,12 +175,13 @@ class GotOcrParser(DocumentParser):
                     else:
                         # Same approach without autocast
                         try:
-                            # Try first as third positional argument
+                            # Always use ocr_type as third positional argument
                             return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
-                        except TypeError:
-                            # Try again with keyword argument
+                        except TypeError as e:
+                            logger.warning(f"Call without autocast failed: {e}, trying alternative approach")
                             try:
-                                return original_chat(self, tokenizer, image_path, ocr_type=ocr_type_val, **kwargs_copy)
+                                # Try passing image_path as string in case that's the issue
+                                return original_chat(self, tokenizer, str(image_path), ocr_type_val, **kwargs_copy)
                             except:
                                 # Fall back to just passing the original arguments unchanged
                                 return original_chat(self, tokenizer, image_path, **kwargs)
@@ -381,12 +382,12 @@ class GotOcrParser(DocumentParser):
             # Use the model's chat method as shown in the documentation
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             try:
-                # Use the updated patched method with ocr_type as a keyword arg
+                # Use ocr_type as a positional argument based on the correct signature
                 logger.info(f"Using OCR method: {ocr_type}")
                 result = self._model.chat(
                     self._tokenizer, 
                     str(file_path), 
-                    ocr_type=ocr_type
+                    ocr_type  # Pass as positional arg, not keyword
                 )
             except RuntimeError as e:
                 if "bfloat16" in str(e) or "BFloat16" in str(e):
@@ -398,21 +399,12 @@ class GotOcrParser(DocumentParser):
                             old_dtype = torch.get_default_dtype()
                             torch.set_default_dtype(torch.float16)
                             
-                            # Try with positional argument first based on documentation
-                            try:
-                                logger.info("Trying positional ocr_type parameter")
-                                result = self._model.chat(
-                                    self._tokenizer,
-                                    str(file_path),
-                                    ocr_type
-                                )
-                            except Exception as inner_e:
-                                logger.warning(f"Positional parameter failed: {inner_e}, trying keyword")
-                                result = self._model.chat(
-                                    self._tokenizer,
-                                    str(file_path),
-                                    ocr_type=ocr_type
-                                )
+                            # Call with positional argument for ocr_type
+                            result = self._model.chat(
+                                self._tokenizer,
+                                str(file_path),
+                                ocr_type
+                            )
                             
                             # Restore default dtype
                             torch.set_default_dtype(old_dtype)
