@@ -1,28 +1,31 @@
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
-import logging
 import os
+import logging
 import sys
-
-# Set PyTorch environment variables for T4 compatibility
-os.environ["TORCH_CUDA_ARCH_LIST"] = "7.0+PTX"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"
+import subprocess
+import tempfile
+import shutil
+from typing import Dict, List, Optional, Any, Union
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
-from src.utils.latex_converter import latex_to_markdown
+
+# Import latex2markdown instead of custom converter
+import latex2markdown
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 class GotOcrParser(DocumentParser):
-    """Parser implementation using GOT-OCR 2.0 for document text extraction.
-    Optimized for NVIDIA T4 GPUs with explicit float16 support.
+    """Parser implementation using GOT-OCR 2.0 for document text extraction using GitHub repository.
+    
+    This implementation uses the official GOT-OCR2.0 GitHub repository through subprocess calls
+    rather than loading the model directly through Hugging Face Transformers.
     """
     
-    _model = None
-    _tokenizer = None
+    # Path to the GOT-OCR repository
+    _repo_path = None
+    _weights_path = None
     
     @classmethod
     def get_name(cls) -> str:
@@ -51,7 +54,6 @@ class GotOcrParser(DocumentParser):
     def _check_dependencies(cls) -> bool:
         """Check if all required dependencies are installed."""
         try:
-            import numpy
             import torch
             import transformers
             import tiktoken
@@ -60,96 +62,76 @@ class GotOcrParser(DocumentParser):
             if hasattr(torch, 'cuda') and not torch.cuda.is_available():
                 logger.warning("CUDA is not available. GOT-OCR performs best with GPU acceleration.")
             
+            # Check for latex2markdown
+            try:
+                import latex2markdown
+                logger.info("latex2markdown package found")
+            except ImportError:
+                logger.warning("latex2markdown package not found. Installing...")
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "latex2markdown"],
+                    check=True
+                )
+            
             return True
         except ImportError as e:
             logger.error(f"Missing dependency: {e}")
             return False
     
     @classmethod
-    def _load_model(cls):
-        """Load the GOT-OCR model and tokenizer if not already loaded."""
-        if cls._model is None or cls._tokenizer is None:
-            try:
-                # Import dependencies inside the method to avoid global import errors
-                import torch
-                from transformers import AutoModel, AutoTokenizer
-                
-                logger.info("Loading GOT-OCR model and tokenizer...")
-                
-                # Load tokenizer
-                cls._tokenizer = AutoTokenizer.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0',
-                    trust_remote_code=True
-                )
-                
-                # Determine device
-                device_map = 'cuda' if torch.cuda.is_available() else 'auto'
-                if device_map == 'cuda':
-                    logger.info("Using CUDA for model inference")
-                else:
-                    logger.warning("Using CPU for model inference (not recommended)")
-                
-                # Load model with explicit float16 for T4 compatibility
-                cls._model = AutoModel.from_pretrained(
-                    'stepfun-ai/GOT-OCR2_0',
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True,
-                    device_map=device_map,
-                    use_safetensors=True,
-                    torch_dtype=torch.float16,  # Force float16 for T4 compatibility
-                    pad_token_id=cls._tokenizer.eos_token_id
-                )
-                
-                # Explicitly convert model to half precision (float16)
-                cls._model = cls._model.half().eval()
-                
-                # Move to CUDA if available
-                if device_map == 'cuda':
-                    cls._model = cls._model.cuda()
-                
-                # Patch torch.autocast to force float16 instead of bfloat16
-                # This fixes the issue in the model's chat method (line 581)
-                original_autocast = torch.autocast
-                def patched_autocast(*args, **kwargs):
-                    # Force dtype to float16 when CUDA is involved
-                    if args and args[0] == "cuda":
-                        kwargs['dtype'] = torch.float16
-                    return original_autocast(*args, **kwargs)
-                
-                # Apply the patch
-                torch.autocast = patched_autocast
-                logger.info("Patched torch.autocast to always use float16 for CUDA operations")
-                
-                logger.info("GOT-OCR model loaded successfully")
-                return True
-            except Exception as e:
-                cls._model = None
-                cls._tokenizer = None
-                logger.error(f"Failed to load GOT-OCR model: {str(e)}")
-                return False
-        return True
-    
-    @classmethod
-    def release_model(cls):
-        """Release the model from memory."""
+    def _setup_repository(cls) -> bool:
+        """Set up the GOT-OCR2.0 repository if it's not already set up."""
+        if cls._repo_path is not None and os.path.exists(cls._repo_path):
+            return True
+        
         try:
-            import torch
+            # Create a temporary directory for the repository
+            repo_dir = os.path.join(tempfile.gettempdir(), "GOT-OCR2.0")
             
-            if cls._model is not None:
-                del cls._model
-                cls._model = None
+            # Check if the repository already exists
+            if not os.path.exists(repo_dir):
+                logger.info("Cloning GOT-OCR2.0 repository...")
+                subprocess.run(
+                    ["git", "clone", "https://github.com/Ucas-HaoranWei/GOT-OCR2.0.git", repo_dir],
+                    check=True
+                )
+            else:
+                logger.info("GOT-OCR2.0 repository already exists, skipping clone")
             
-            if cls._tokenizer is not None:
-                del cls._tokenizer
-                cls._tokenizer = None
+            cls._repo_path = repo_dir
             
-            # Clear CUDA cache if available
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # Set up the weights directory
+            weights_dir = os.path.join(repo_dir, "GOT_weights")
+            if not os.path.exists(weights_dir):
+                os.makedirs(weights_dir, exist_ok=True)
             
-            logger.info("GOT-OCR model released from memory")
+            cls._weights_path = weights_dir
+            
+            # Check if weights exist, if not download them
+            weight_files = [f for f in os.listdir(weights_dir) if f.endswith(".bin") or f.endswith(".safetensors")]
+            if not weight_files:
+                logger.info("Downloading GOT-OCR2.0 weights...")
+                logger.info("This may take some time depending on your internet connection.")
+                logger.info("Downloading from Hugging Face repository...")
+                
+                # Use Hugging Face CLI to download the model
+                subprocess.run(
+                    ["huggingface-cli", "download", "stepfun-ai/GOT-OCR2_0", "--local-dir", weights_dir],
+                    check=True
+                )
+                
+                # Additional check to verify downloads
+                weight_files = [f for f in os.listdir(weights_dir) if f.endswith(".bin") or f.endswith(".safetensors")]
+                if not weight_files:
+                    logger.error("Failed to download weights. Please download them manually and place in GOT_weights directory.")
+                    return False
+            
+            logger.info("GOT-OCR2.0 repository and weights set up successfully")
+            return True
+            
         except Exception as e:
-            logger.error(f"Error releasing model: {str(e)}")
+            logger.error(f"Failed to set up GOT-OCR2.0 repository: {str(e)}")
+            return False
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using GOT-OCR 2.0.
@@ -170,12 +152,9 @@ class GotOcrParser(DocumentParser):
                 "tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0"
             )
         
-        # Load model if not already loaded
-        if not self._load_model():
-            raise RuntimeError("Failed to load GOT-OCR model")
-        
-        # Import torch here to ensure it's available
-        import torch
+        # Set up the repository
+        if not self._setup_repository():
+            raise RuntimeError("Failed to set up GOT-OCR2.0 repository")
         
         # Validate file path and extension
         file_path = Path(file_path)
@@ -192,87 +171,76 @@ class GotOcrParser(DocumentParser):
         ocr_type = "format" if ocr_method == "format" else "ocr"
         logger.info(f"Using OCR method: {ocr_type}")
         
-        # Process the image
+        # Check if render is specified in kwargs
+        render = kwargs.get('render', False)
+        
+        # Process the image using the GOT-OCR repository
         try:
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             
-            # First attempt: Normal processing with autocast
-            try:
-                with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                    # Use format=True parameter when ocr_type is "format"
-                    if ocr_type == "format":
-                        result = self._model.chat(
-                            self._tokenizer,
-                            str(file_path),
-                            ocr_type='format'
-                        )
-                    else:
-                        result = self._model.chat(
-                            self._tokenizer,
-                            str(file_path),
-                            ocr_type='ocr'
-                        )
-                
-                # Convert LaTeX to Markdown for better display in UI
-                if ocr_type == "format":
-                    logger.info("Converting formatted LaTeX output to Markdown")
-                    result = latex_to_markdown(result)
-                
-                return result
-            except RuntimeError as e:
-                # Check if it's a bfloat16 error
-                if "bfloat16" in str(e) or "BFloat16" in str(e):
-                    logger.warning("Encountered bfloat16 error, trying float16 fallback")
-                    
-                    # Second attempt: More aggressive float16 forcing
-                    try:
-                        # Ensure model is float16
-                        self._model = self._model.half()
-                        
-                        # Set default dtype temporarily
-                        original_dtype = torch.get_default_dtype()
-                        torch.set_default_dtype(torch.float16)
-                        
-                        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                            # Use format=True parameter when ocr_type is "format"
-                            if ocr_type == "format":
-                                result = self._model.chat(
-                                    self._tokenizer,
-                                    str(file_path),
-                                    ocr_type='format'
-                                )
-                            else:
-                                result = self._model.chat(
-                                    self._tokenizer,
-                                    str(file_path),
-                                    ocr_type='ocr'
-                                )
-                        
-                        # Restore default dtype
-                        torch.set_default_dtype(original_dtype)
-                        
-                        # Convert LaTeX to Markdown for better display in UI
-                        if ocr_type == "format":
-                            logger.info("Converting formatted LaTeX output to Markdown")
-                            result = latex_to_markdown(result)
-                        
-                        return result
-                    except Exception as inner_e:
-                        logger.error(f"Float16 fallback failed: {str(inner_e)}")
-                        raise RuntimeError(
-                            f"Failed to process image with GOT-OCR: {str(inner_e)}"
-                        )
+            # Create the command for running the GOT-OCR script
+            cmd = [
+                sys.executable,
+                os.path.join(self._repo_path, "GOT", "demo", "run_ocr_2.0.py"),
+                "--model-name", self._weights_path,
+                "--image-file", str(file_path),
+                "--type", ocr_type
+            ]
+            
+            # Add render flag if required
+            if render:
+                cmd.append("--render")
+            
+            # Check if box or color is specified in kwargs
+            if 'box' in kwargs and kwargs['box']:
+                cmd.extend(["--box", str(kwargs['box'])])
+            
+            if 'color' in kwargs and kwargs['color']:
+                cmd.extend(["--color", kwargs['color']])
+            
+            # Run the command and capture output
+            logger.info(f"Running command: {' '.join(cmd)}")
+            process = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            # Process the output
+            result = process.stdout.strip()
+            
+            # If render was requested, find and return the path to the HTML file
+            if render:
+                # The rendered results are in /results/demo.html according to the README
+                html_result_path = os.path.join(self._repo_path, "results", "demo.html")
+                if os.path.exists(html_result_path):
+                    with open(html_result_path, 'r') as f:
+                        html_content = f.read()
+                    return html_content
                 else:
-                    # Not a bfloat16 error, re-raise
-                    raise
-                    
+                    logger.warning(f"Rendered HTML file not found at {html_result_path}")
+            
+            # Check if we need to convert from LaTeX to Markdown
+            if ocr_type == "format":
+                logger.info("Converting formatted LaTeX output to Markdown using latex2markdown")
+                # Use the latex2markdown package instead of custom converter
+                l2m = latex2markdown.LaTeX2Markdown(result)
+                result = l2m.to_markdown()
+            
+            return result
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running GOT-OCR command: {str(e)}")
+            logger.error(f"Stderr: {e.stderr}")
+            raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+            
         except Exception as e:
             logger.error(f"Error processing image with GOT-OCR: {str(e)}")
             
             # Handle specific errors with helpful messages
             error_type = type(e).__name__
             if error_type == 'OutOfMemoryError':
-                self.release_model()
                 raise RuntimeError(
                     "GPU out of memory while processing with GOT-OCR. "
                     "Try using a smaller image or a different parser."
@@ -280,11 +248,17 @@ class GotOcrParser(DocumentParser):
             
             # Generic error
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+    
+    @classmethod
+    def release_model(cls):
+        """Release the model resources."""
+        # No need to do anything here since we're not loading the model directly
+        # We're using subprocess calls instead
+        pass
 
 # Try to register the parser
 try:
     # Only check basic imports, detailed dependency check happens in parse method
-    import numpy
     import torch
     ParserRegistry.register(GotOcrParser)
     logger.info("GOT-OCR parser registered successfully")

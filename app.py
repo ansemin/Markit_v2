@@ -18,6 +18,29 @@ try:
 except Exception as e:
     print(f"Error running setup.sh: {e}")
 
+# Check if git is installed (needed for GOT-OCR)
+try:
+    git_version = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+    if git_version.returncode == 0:
+        print(f"Git found: {git_version.stdout.strip()}")
+    else:
+        print("WARNING: Git not found. GOT-OCR parser requires git for repository cloning.")
+except Exception:
+    print("WARNING: Git not found or not in PATH. GOT-OCR parser requires git for repository cloning.")
+
+# Check if Hugging Face CLI is installed (needed for GOT-OCR)
+try:
+    hf_cli = subprocess.run(["huggingface-cli", "--version"], capture_output=True, text=True, check=False)
+    if hf_cli.returncode == 0:
+        print(f"Hugging Face CLI found: {hf_cli.stdout.strip()}")
+    else:
+        print("WARNING: Hugging Face CLI not found. GOT-OCR parser requires huggingface-cli for model downloads.")
+        print("Installing Hugging Face CLI...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub[cli]"], check=False)
+except Exception:
+    print("WARNING: Hugging Face CLI not found. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub[cli]"], check=False)
+
 # Try to load environment variables from .env file
 try:
     from dotenv import load_dotenv

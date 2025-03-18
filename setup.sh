@@ -11,11 +11,12 @@ if [ "$EUID" -eq 0 ]; then
     echo "Installing system dependencies..."
     apt-get update && apt-get install -y \
         wget \
-        pkg-config
+        pkg-config \
+        git
     echo "System dependencies installed successfully"
 else
     echo "Not running as root. Skipping system dependencies installation."
-    echo "If system dependencies are needed, please run this script with sudo."
+    echo "Make sure git is installed on your system for GOT-OCR to work properly."
 fi
 
 # Install NumPy first as it's required by many other packages
@@ -27,12 +28,18 @@ echo "NumPy installed successfully"
 echo "Installing Python dependencies..."
 pip install -q -U pillow opencv-python-headless
 pip install -q -U google-genai
+pip install -q -U latex2markdown
 echo "Python dependencies installed successfully"
 
 # Install GOT-OCR dependencies
 echo "Installing GOT-OCR dependencies..."
-pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.3
+pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.3 huggingface_hub
 echo "GOT-OCR dependencies installed successfully"
+
+# Install Hugging Face CLI
+echo "Installing Hugging Face CLI..."
+pip install -q -U "huggingface_hub[cli]"
+echo "Hugging Face CLI installed successfully"
 
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
