@@ -80,13 +80,13 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
     # Check if we should cancel before starting
     if is_cancelled:
         logger.info("Conversion cancelled before starting")
-        return "Conversion cancelled.", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+        return "Conversion cancelled.", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
     # Validate file type for the selected parser
     is_valid, error_msg = validate_file_for_parser(file_path, parser_name)
     if not is_valid:
         logger.error(f"File validation error: {error_msg}")
-        return f"Error: {error_msg}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+        return f"Error: {error_msg}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
     logger.info("Starting conversion with cancellation flag cleared")
     
@@ -107,14 +107,14 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
             thread.join(timeout=0.5)
             if thread.is_alive():
                 logger.warning("Thread did not finish within timeout")
-            return "Conversion cancelled.", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+            return "Conversion cancelled.", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
         
         # Sleep briefly to avoid busy waiting
         time.sleep(0.1)
     
     # Thread has completed, check results
     if results["error"]:
-        return f"Error: {results['error']}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+        return f"Error: {results['error']}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
     content = results["content"]
     download_file = results["download_file"]
@@ -122,14 +122,14 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
     # If conversion returned a cancellation message
     if content == "Conversion cancelled.":
         logger.info("Converter returned cancellation message")
-        return content, None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+        return content, None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
     # Format the content and wrap it in the scrollable container
     formatted_content = format_markdown_content(str(content))
     html_output = f"<div class='output-container'>{formatted_content}</div>"
     
     logger.info("Conversion completed successfully")
-    return html_output, download_file, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), None
+    return html_output, download_file, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
 
 def create_ui():
     with gr.Blocks(css="""

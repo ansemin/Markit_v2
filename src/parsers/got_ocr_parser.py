@@ -11,6 +11,7 @@ os.environ["TORCH_AMP_AUTOCAST_DTYPE"] = "float16"
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
+from src.utils.latex_converter import latex_to_markdown
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ class GotOcrParser(DocumentParser):
             **kwargs: Additional arguments to pass to the model
             
         Returns:
-            Extracted text from the image
+            Extracted text from the image, converted to Markdown if formatted
         """
         # Verify dependencies are installed
         if not self._check_dependencies():
@@ -211,6 +212,12 @@ class GotOcrParser(DocumentParser):
                             str(file_path),
                             ocr_type='ocr'
                         )
+                
+                # Convert LaTeX to Markdown for better display in UI
+                if ocr_type == "format":
+                    logger.info("Converting formatted LaTeX output to Markdown")
+                    result = latex_to_markdown(result)
+                
                 return result
             except RuntimeError as e:
                 # Check if it's a bfloat16 error
@@ -243,6 +250,12 @@ class GotOcrParser(DocumentParser):
                         
                         # Restore default dtype
                         torch.set_default_dtype(original_dtype)
+                        
+                        # Convert LaTeX to Markdown for better display in UI
+                        if ocr_type == "format":
+                            logger.info("Converting formatted LaTeX output to Markdown")
+                            result = latex_to_markdown(result)
+                        
                         return result
                     except Exception as inner_e:
                         logger.error(f"Float16 fallback failed: {str(inner_e)}")
