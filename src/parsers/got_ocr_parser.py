@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 # Set logger level to DEBUG for more verbose output
 logger.setLevel(logging.DEBUG)
 
+# Add patch for bfloat16 at the module level
+if 'torch' in sys.modules:
+    torch_module = sys.modules['torch']
+    if hasattr(torch_module, 'bfloat16'):
+        # Create a reference to the original bfloat16 function
+        original_bfloat16 = torch_module.bfloat16
+        # Replace it with float16
+        torch_module.bfloat16 = torch_module.float16
+        logger.info("Patched torch.bfloat16 to use torch.float16 instead")
+
 class GotOcrParser(DocumentParser):
     """Parser implementation using GOT-OCR 2.0 for document text extraction using GitHub repository.
     
@@ -257,7 +267,7 @@ class GotOcrParser(DocumentParser):
                     raise FileNotFoundError(f"Script not found and search failed: {str(search_e)}")
             
             # Create a batch/shell script to run the Python script with the correct PYTHONPATH
-            # This ensures the GOT module can be imported
+            # This ensures the GOT module can be imported and patches bfloat16
             temp_script = None
             try:
                 # Create a temporary script
@@ -269,6 +279,38 @@ class GotOcrParser(DocumentParser):
                     f.write("#!/bin/bash\n")
                     f.write(f"cd {parent_dir}\n")  # Change to parent directory
                     f.write("export PYTHONPATH=$PYTHONPATH:$(pwd)\n")  # Add current directory to PYTHONPATH
+                    
+                    # Add a Python script to patch torch.bfloat16
+                    patch_script = os.path.join(tempfile.gettempdir(), "patch_torch.py")
+                    with open(patch_script, 'w') as patch_f:
+                        patch_f.write("""
+import sys
+import torch
+
+# Patch torch.bfloat16 to use torch.float16 instead
+if hasattr(torch, 'bfloat16'):
+    # Save reference to original bfloat16
+    original_bfloat16 = torch.bfloat16
+    # Replace with float16
+    torch.bfloat16 = torch.float16
+    print("Successfully patched torch.bfloat16 to use torch.float16")
+
+# Also patch torch.autocast context manager for CUDA
+original_autocast = torch.autocast
+def patched_autocast(*args, **kwargs):
+    # Force dtype to float16 when CUDA is involved
+    if args and args[0] == "cuda" and kwargs.get("dtype") == torch.bfloat16:
+        kwargs["dtype"] = torch.float16
+        print(f"Autocast: Changed bfloat16 to float16 for {args}")
+    return original_autocast(*args, **kwargs)
+
+torch.autocast = patched_autocast
+print("Successfully patched torch.autocast to ensure float16 is used instead of bfloat16")
+                        """)
+                    
+                    # Use the patch in the Python environment
+                    f.write(f"export PYTHONPATH={parent_dir}:$PYTHONPATH\n")
+                    f.write(f"python -c 'import sys; sys.path.insert(0, \"{parent_dir}\"); exec(open(\"{patch_script}\").read())'\n")
                     
                     # Build the command
                     py_cmd = [sys.executable, script_path]
