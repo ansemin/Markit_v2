@@ -131,17 +131,41 @@ class GotOcrParser(DocumentParser):
                 logger.info("Patching model to use float16 instead of bfloat16")
                 original_chat = cls._model.chat
                 
-                # Define a patched chat method that explicitly handles ocr_type
-                def patched_chat(self, tokenizer, image_path, ocr_type=None, **kwargs):
-                    # Check if patch is working
-                    logger.info(f"Using patched chat method with float16, ocr_type={ocr_type}")
+                # Get the original signature to understand the proper parameter order
+                import inspect
+                try:
+                    original_sig = inspect.signature(original_chat)
+                    logger.info(f"Original chat method signature: {original_sig}")
+                except Exception as e:
+                    logger.warning(f"Could not inspect original chat method: {e}")
+                
+                # Define a completely new patched chat method that avoids parameter conflicts
+                def patched_chat(self, tokenizer, image_path, **kwargs):
+                    """A patched version of chat method that forces float16 precision"""
+                    ocr_type_val = kwargs.get('ocr_type', 'ocr')  # Default to 'ocr' if not specified
+                    
+                    # Remove ocr_type from kwargs to avoid duplication
+                    kwargs_copy = kwargs.copy()
+                    if 'ocr_type' in kwargs_copy:
+                        del kwargs_copy['ocr_type']
+                    
+                    logger.info(f"Using patched chat method with float16, ocr_type={ocr_type_val}")
                     
                     # Set explicit autocast dtype
                     if hasattr(torch.amp, 'autocast'):
                         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                             try:
-                                # Pass parameters explicitly to avoid duplication
-                                return original_chat(self, tokenizer, image_path, ocr_type=ocr_type, **kwargs)
+                                # Try first as third positional argument (based on example code)
+                                return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
+                            except TypeError as e:
+                                logger.warning(f"First call approach failed: {e}, trying with keyword argument")
+                                try:
+                                    # Try again with keyword argument
+                                    return original_chat(self, tokenizer, image_path, ocr_type=ocr_type_val, **kwargs_copy)
+                                except Exception as e2:
+                                    logger.warning(f"Second call approach also failed: {e2}")
+                                    # Fall back to just passing the original arguments unchanged
+                                    return original_chat(self, tokenizer, image_path, **kwargs)
                             except RuntimeError as e:
                                 if "bfloat16" in str(e):
                                     logger.error(f"BFloat16 error encountered despite patching: {e}")
@@ -149,8 +173,17 @@ class GotOcrParser(DocumentParser):
                                 else:
                                     raise
                     else:
-                        # Same handling for non-autocast case
-                        return original_chat(self, tokenizer, image_path, ocr_type=ocr_type, **kwargs)
+                        # Same approach without autocast
+                        try:
+                            # Try first as third positional argument
+                            return original_chat(self, tokenizer, image_path, ocr_type_val, **kwargs_copy)
+                        except TypeError:
+                            # Try again with keyword argument
+                            try:
+                                return original_chat(self, tokenizer, image_path, ocr_type=ocr_type_val, **kwargs_copy)
+                            except:
+                                # Fall back to just passing the original arguments unchanged
+                                return original_chat(self, tokenizer, image_path, **kwargs)
                 
                 # Apply the patch
                 import types
@@ -348,7 +381,8 @@ class GotOcrParser(DocumentParser):
             # Use the model's chat method as shown in the documentation
             logger.info(f"Processing image with GOT-OCR: {file_path}")
             try:
-                # Pass ocr_type as a keyword argument to match the documentation
+                # Use the updated patched method with ocr_type as a keyword arg
+                logger.info(f"Using OCR method: {ocr_type}")
                 result = self._model.chat(
                     self._tokenizer, 
                     str(file_path), 
@@ -364,12 +398,21 @@ class GotOcrParser(DocumentParser):
                             old_dtype = torch.get_default_dtype()
                             torch.set_default_dtype(torch.float16)
                             
-                            # Pass ocr_type as a keyword argument here too
-                            result = self._model.chat(
-                                self._tokenizer,
-                                str(file_path),
-                                ocr_type=ocr_type
-                            )
+                            # Try with positional argument first based on documentation
+                            try:
+                                logger.info("Trying positional ocr_type parameter")
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type
+                                )
+                            except Exception as inner_e:
+                                logger.warning(f"Positional parameter failed: {inner_e}, trying keyword")
+                                result = self._model.chat(
+                                    self._tokenizer,
+                                    str(file_path),
+                                    ocr_type=ocr_type
+                                )
                             
                             # Restore default dtype
                             torch.set_default_dtype(old_dtype)
