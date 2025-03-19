@@ -13,7 +13,6 @@ opencv-python  # Match exact dependency from GOT-OCR
 # Utility dependencies
 python-dotenv>=1.0.0
 pydantic==2.7.1
-latex2markdown>=0.1.0  # For LaTeX to Markdown conversion
 
 # Gemini API client
 google-genai>=0.1.0

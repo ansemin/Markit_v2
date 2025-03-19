@@ -10,6 +10,14 @@ from src.core.parser_factory import ParserFactory
 # Import all parsers to ensure they're registered
 from src import parsers
 
+# Import the LaTeX to Markdown converter
+try:
+    from src.core.latex_to_markdown_converter import convert_latex_to_markdown
+    HAS_GEMINI_CONVERTER = True
+except ImportError:
+    HAS_GEMINI_CONVERTER = False
+    logging.warning("LaTeX to Markdown converter not available. Raw LaTeX will be returned for formatted text.")
+
 # Reference to the cancellation flag from ui.py
 # This will be set by the UI when the cancel button is clicked
 conversion_cancelled = None  # Will be a threading.Event object
@@ -132,6 +140,34 @@ def convert_file(file_path, parser_name, ocr_method_name, output_format):
                 logging.info("Cancellation detected after processing")
                 safe_delete_file(temp_input)
                 return "Conversion cancelled.", None
+                
+            # Process LaTeX content for GOT-OCR formatted text
+            if parser_name == "GOT-OCR (jpg,png only)" and ocr_method_name == "Formatted Text" and HAS_GEMINI_CONVERTER:
+                logging.info("Converting LaTeX output to Markdown using Gemini API")
+                start_convert = time.time()
+                
+                # Check for cancellation before conversion
+                if check_cancellation():
+                    logging.info("Cancellation detected before LaTeX conversion")
+                    safe_delete_file(temp_input)
+                    return "Conversion cancelled.", None
+                
+                try:
+                    markdown_content = convert_latex_to_markdown(content)
+                    if markdown_content:
+                        content = markdown_content
+                        logging.info(f"LaTeX conversion completed in {time.time() - start_convert:.2f} seconds")
+                    else:
+                        logging.warning("LaTeX to Markdown conversion failed, using raw LaTeX output")
+                except Exception as e:
+                    logging.error(f"Error converting LaTeX to Markdown: {str(e)}")
+                    # Continue with the original content on error
+                
+                # Check for cancellation after conversion
+                if check_cancellation():
+                    logging.info("Cancellation detected after LaTeX conversion")
+                    safe_delete_file(temp_input)
+                    return "Conversion cancelled.", None
                 
         except Exception as e:
             safe_delete_file(temp_input)

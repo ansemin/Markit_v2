@@ -77,9 +77,10 @@ gemini_api_key = os.getenv("GOOGLE_API_KEY")
 
 # Check if API key is available and print a message if not
 if not gemini_api_key:
-    print("Warning: GOOGLE_API_KEY environment variable not found. Gemini Flash parser may not work.")
+    print("Warning: GOOGLE_API_KEY environment variable not found. Gemini Flash parser and LaTeX to Markdown conversion may not work.")
 else:
     print(f"Found Gemini API key: {gemini_api_key[:5]}...{gemini_api_key[-5:] if len(gemini_api_key) > 10 else ''}")
+    print("Gemini API will be used for LaTeX to Markdown conversion when using GOT-OCR with Formatted Text mode")
 
 # Add the current directory to the Python path
 sys.path.append(current_dir)

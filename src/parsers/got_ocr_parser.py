@@ -17,8 +17,8 @@ import copy
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
 
-# Import latex2markdown for conversion
-import latex2markdown
+# Import latex2markdown for conversion - No longer needed, using Gemini API
+# import latex2markdown
 
 # Configure logging
 logger = logging.getLogger(__name__)

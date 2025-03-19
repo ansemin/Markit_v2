@@ -79,6 +79,7 @@ class GeminiFlashParser(DocumentParser):
             Convert this document to markdown format. 
             Preserve the structure, headings, lists, tables, and formatting as much as possible.
             For images, include a brief description in markdown image syntax.
+            Return only the markdown content, no other text.
             """
             
             # Generate the response
@@ -92,7 +93,7 @@ class GeminiFlashParser(DocumentParser):
                     )
                 ],
                 config={
-                    "temperature": 0.2,
+                    "temperature": 0.1,
                     "top_p": 0.95,
                     "top_k": 40,
                     "max_output_tokens": 8192,
