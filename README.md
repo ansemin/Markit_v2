@@ -31,10 +31,11 @@ Markit is a powerful tool that converts various document formats (PDF, DOCX, ima
   - **PyPdfium**: Fast PDF parsing using the PDFium engine
   - **Docling**: Advanced document structure analysis
   - **Gemini Flash**: AI-powered conversion using Google's Gemini API
-  - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only)
+  - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only) with plain text and formatted text options
 - **OCR Integration**: Extract text from images and scanned documents using Tesseract OCR
 - **Interactive UI**: User-friendly Gradio interface with page navigation for large documents
 - **AI-Powered Chat**: Interact with your documents using AI to ask questions about content
+- **ZeroGPU Support**: Optimized for Hugging Face Spaces with Stateless GPU environments
 
 ## System Architecture
 The application is built with a modular architecture:
@@ -85,14 +86,16 @@ The GOT-OCR parser requires:
 1. CUDA-capable GPU with sufficient memory
 2. The following dependencies will be installed automatically:
    ```bash
-   torch>=2.0.1
-   torchvision>=0.15.2
-   transformers>=4.37.2,<4.48.0  # Specific version range required
-   tiktoken>=0.6.0
-   verovio>=4.3.1
-   accelerate>=0.28.0
+   torch
+   torchvision
+   git+https://github.com/huggingface/transformers.git@main  # Latest transformers from GitHub
+   accelerate
+   verovio
+   numpy==1.26.3  # Specific version required
+   opencv-python
    ```
 3. Note that GOT-OCR only supports JPG and PNG image formats
+4. In HF Spaces, the integration with ZeroGPU is automatic and optimized for Stateless GPU environments
 
 ## Deploying to Hugging Face Spaces
 
@@ -126,6 +129,8 @@ build:
    - **None**: No OCR processing (for documents with selectable text)
    - **Tesseract**: Basic OCR using Tesseract
    - **Advanced**: Enhanced OCR with layout preservation (available with specific parsers)
+   - **Plain Text**: For GOT-OCR, extracts raw text without formatting
+   - **Formatted Text**: For GOT-OCR, preserves formatting and converts to Markdown
 4. Select your desired output format:
    - **Markdown**: Clean, readable markdown format
    - **JSON**: Structured data representation
@@ -152,8 +157,11 @@ build:
 - Verify that all required dependencies are installed correctly
 - Remember that GOT-OCR only supports JPG and PNG image formats
 - If you encounter CUDA out-of-memory errors, try using a smaller image
-- GOT-OCR requires transformers version <4.48.0 due to API changes in newer versions
-- If you see errors about 'get_max_length', downgrade transformers to version 4.47.0
+- In Hugging Face Spaces with Stateless GPU, ensure the `spaces` module is imported before any CUDA initialization
+- If you see errors about "CUDA must not be initialized in the main process", verify the import order in your app.py
+- If you encounter "cannot pickle '_thread.lock' object" errors, this indicates thread locks are being passed to the GPU function
+- The GOT-OCR parser has been optimized for ZeroGPU in Stateless GPU environments with proper serialization handling
+- For local development, the parser will fall back to CPU processing if GPU is not available
 
 ### General Issues
 - Check the console logs for error messages
@@ -186,6 +194,7 @@ markit/
 │   │   ├── parser_interface.py # Parser interface
 │   │   ├── parser_registry.py # Parser registry
 │   │   ├── docling_parser.py # Docling parser
+│   │   ├── got_ocr_parser.py # GOT-OCR parser for images
 │   │   └── pypdfium_parser.py # PyPDFium parser
 │   ├── ui/                 # User interface
 │   │   ├── __init__.py     # Package initialization
@@ -195,3 +204,13 @@ markit/
 └── tests/                  # Tests
     └── __init__.py         # Package initialization
 ```
+
+### ZeroGPU Integration Notes
+
+When developing for Hugging Face Spaces with Stateless GPU:
+
+1. Always import the `spaces` module before any CUDA initialization
+2. Place all CUDA operations inside functions decorated with `@spaces.GPU()`
+3. Ensure only picklable objects are passed to GPU-decorated functions
+4. Use wrapper functions to filter out unpicklable objects like thread locks
+5. For advanced use cases, consider implementing fallback mechanisms for serialization errors
