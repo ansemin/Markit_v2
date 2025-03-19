@@ -7,7 +7,13 @@ import tempfile
 import shutil
 from typing import Dict, List, Optional, Any, Union
 
-import spaces  # Import spaces module for ZeroGPU support
+# Import spaces module for ZeroGPU support
+try:
+    import spaces
+    HAS_SPACES = True
+except ImportError:
+    HAS_SPACES = False
+
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
 
@@ -72,8 +78,9 @@ class GotOcrParser(DocumentParser):
             import transformers
             import tiktoken
             
-            # For ZeroGPU, we don't need to check CUDA availability here
-            # as the GPU will be allocated when needed
+            # Check CUDA availability if using torch
+            if hasattr(torch, 'cuda') and not torch.cuda.is_available():
+                logger.warning("CUDA is not available. GOT-OCR performs best with GPU acceleration.")
             
             # Check for latex2markdown
             try:
@@ -195,12 +202,8 @@ class GotOcrParser(DocumentParser):
             logger.error(f"Failed to set up GOT-OCR2.0 repository: {str(e)}")
             return False
     
-    @spaces.GPU(duration=120)  # Set duration to 120 seconds for OCR processing
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using GOT-OCR 2.0.
-        
-        This method is decorated with @spaces.GPU to enable ZeroGPU support.
-        When called, it will request a GPU from the ZeroGPU pool.
         
         Args:
             file_path: Path to the image file
@@ -284,95 +287,67 @@ class GotOcrParser(DocumentParser):
                     f.write(f"cd {parent_dir}\n")  # Change to parent directory
                     f.write("export PYTHONPATH=$PYTHONPATH:$(pwd)\n")  # Add current directory to PYTHONPATH
                     
-                    # Add environment variables for ZeroGPU support
-                    f.write("export SPACES_ZERO_GPU=1\n")  # Enable ZeroGPU
-                    f.write("export CUDA_VISIBLE_DEVICES=0\n")  # Use first available GPU
-                    
                     # Add a Python script to patch torch.bfloat16
                     patch_script = os.path.join(tempfile.gettempdir(), "patch_torch.py")
                     with open(patch_script, 'w') as patch_f:
                         patch_f.write("""
 import sys
 import torch
-import spaces
 
-@spaces.GPU(duration=120)
-def patch_torch():
-    # Patch torch.bfloat16 to use torch.float16 instead
-    if hasattr(torch, 'bfloat16'):
-        # Save reference to original bfloat16
-        original_bfloat16 = torch.bfloat16
-        # Replace with float16
-        torch.bfloat16 = torch.float16
-        print("Successfully patched torch.bfloat16 to use torch.float16")
+# Patch torch.bfloat16 to use torch.float16 instead
+if hasattr(torch, 'bfloat16'):
+    # Save reference to original bfloat16
+    original_bfloat16 = torch.bfloat16
+    # Replace with float16
+    torch.bfloat16 = torch.float16
+    print("Successfully patched torch.bfloat16 to use torch.float16")
 
-    # Also patch torch.autocast context manager for CUDA
-    original_autocast = torch.autocast
-    def patched_autocast(*args, **kwargs):
-        # Force dtype to float16 when CUDA is involved
-        if args and args[0] == "cuda" and kwargs.get("dtype") == torch.bfloat16:
-            kwargs["dtype"] = torch.float16
-            print(f"Autocast: Changed bfloat16 to float16 for {args}")
-        return original_autocast(*args, **kwargs)
+# Also patch torch.autocast context manager for CUDA
+original_autocast = torch.autocast
+def patched_autocast(*args, **kwargs):
+    # Force dtype to float16 when CUDA is involved
+    if args and args[0] == "cuda" and kwargs.get("dtype") == torch.bfloat16:
+        kwargs["dtype"] = torch.float16
+        print(f"Autocast: Changed bfloat16 to float16 for {args}")
+    return original_autocast(*args, **kwargs)
 
-    torch.autocast = patched_autocast
-    print("Successfully patched torch.autocast to ensure float16 is used instead of bfloat16")
-
-patch_torch()  # Execute the patching
+torch.autocast = patched_autocast
+print("Successfully patched torch.autocast to ensure float16 is used instead of bfloat16")
 """)
-                        
-                        # Build the command with the patch included and ZeroGPU support
-                        py_cmd = [
-                            sys.executable,
-                            "-c",
-                            f"""
-import sys
-import spaces
-sys.path.insert(0, '{parent_dir}')
-exec(open('{patch_script}').read())
-
-@spaces.GPU(duration=120)
-def run_got_ocr():
-    import runpy
-    runpy.run_path('{script_path}', run_name='__main__')
-
-run_got_ocr()
-"""
-                        ]
-                        
-                        # Add the arguments
-                        py_cmd.extend(["--model-name", self._weights_path])
-                        py_cmd.extend(["--image-file", str(file_path)])
-                        py_cmd.extend(["--type", ocr_type])
-                        
-                        # Add render flag if required
-                        if render:
-                            py_cmd.append("--render")
-                        
-                        # Check if box or color is specified in kwargs
-                        if 'box' in kwargs and kwargs['box']:
-                            py_cmd.extend(["--box", str(kwargs['box'])])
-                        
-                        if 'color' in kwargs and kwargs['color']:
-                            py_cmd.extend(["--color", kwargs['color']])
-                        
-                        # Add the command to the script
-                        f.write(" ".join(py_cmd) + "\n")
+                    
+                    # Build the command with the patch included
+                    py_cmd = [
+                        sys.executable,
+                        "-c",
+                        f"import sys; sys.path.insert(0, '{parent_dir}'); "
+                        f"exec(open('{patch_script}').read()); "
+                        f"import runpy; runpy.run_path('{script_path}', run_name='__main__')"
+                    ]
+                    
+                    # Add the arguments
+                    py_cmd.extend(["--model-name", self._weights_path])
+                    py_cmd.extend(["--image-file", str(file_path)])
+                    py_cmd.extend(["--type", ocr_type])
+                    
+                    # Add render flag if required
+                    if render:
+                        py_cmd.append("--render")
+                    
+                    # Check if box or color is specified in kwargs
+                    if 'box' in kwargs and kwargs['box']:
+                        py_cmd.extend(["--box", str(kwargs['box'])])
+                    
+                    if 'color' in kwargs and kwargs['color']:
+                        py_cmd.extend(["--color", kwargs['color']])
+                    
+                    # Add the command to the script
+                    f.write(" ".join(py_cmd) + "\n")
                 
                 # Make the script executable
                 os.chmod(temp_script, 0o755)
                 
-                # Run the script
-                logger.info(f"Running command through wrapper script: {temp_script}")
-                process = subprocess.run(
-                    [temp_script],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Process the output
-                result = process.stdout.strip()
+                # Run the script with GPU access if available
+                result = self._run_with_gpu(temp_script)
                 
                 # If render was requested, find and return the path to the HTML file
                 if render:
@@ -417,6 +392,42 @@ run_got_ocr()
             
             # Generic error
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+
+    # Define a method that will be decorated with spaces.GPU to ensure GPU access
+    def _run_with_gpu(self, script_path):
+        """Run a script with GPU access using the spaces.GPU decorator if available."""
+        if HAS_SPACES:
+            # Use the spaces.GPU decorator to ensure GPU access
+            return self._run_script_with_gpu_allocation(script_path)
+        else:
+            # Fall back to regular execution if spaces module is not available
+            logger.info(f"Running command through wrapper script without ZeroGPU: {script_path}")
+            process = subprocess.run(
+                [script_path],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            return process.stdout.strip()
+    
+    # This method will be decorated with spaces.GPU
+    if HAS_SPACES:
+        @spaces.GPU(duration=180)  # Allocate up to 3 minutes for OCR processing
+        def _run_script_with_gpu_allocation(self, script_path):
+            """Run a script with GPU access using the spaces.GPU decorator."""
+            logger.info(f"Running command through wrapper script with ZeroGPU allocation: {script_path}")
+            process = subprocess.run(
+                [script_path],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            return process.stdout.strip()
+    else:
+        # Define a dummy method if spaces is not available
+        def _run_script_with_gpu_allocation(self, script_path):
+            # This should never be called if HAS_SPACES is False
+            raise NotImplementedError("spaces module is not available")
     
     @classmethod
     def release_model(cls):

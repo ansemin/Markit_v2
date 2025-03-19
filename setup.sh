@@ -45,6 +45,11 @@ echo "Installing Hugging Face CLI..."
 pip install -q -U "huggingface_hub[cli]"
 echo "Hugging Face CLI installed successfully"
 
+# Install spaces module for ZeroGPU support
+echo "Installing spaces module for ZeroGPU support..."
+pip install -q -U spaces
+echo "Spaces module installed successfully"
+
 # Add debug section for GOT-OCR repo
 echo "===== GOT-OCR Repository Debugging ====="
 

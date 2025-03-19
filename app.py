@@ -47,6 +47,14 @@ except Exception:
     print("WARNING: Hugging Face CLI not found. Installing...")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub[cli]"], check=False)
 
+# Check if spaces module is installed (needed for ZeroGPU)
+try:
+    import spaces
+    print("Spaces module found for ZeroGPU support")
+except ImportError:
+    print("WARNING: Spaces module not found. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "spaces"], check=False)
+
 # Try to load environment variables from .env file
 try:
     from dotenv import load_dotenv
