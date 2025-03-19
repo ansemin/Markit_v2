@@ -1,3 +1,10 @@
+# Import spaces module for ZeroGPU support - Must be first import
+try:
+    import spaces
+    HAS_SPACES = True
+except ImportError:
+    HAS_SPACES = False
+
 from pathlib import Path
 import os
 import logging
@@ -5,13 +12,6 @@ import sys
 import tempfile
 import shutil
 from typing import Dict, List, Optional, Any, Union
-
-# Import spaces module for ZeroGPU support
-try:
-    import spaces
-    HAS_SPACES = True
-except ImportError:
-    HAS_SPACES = False
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry

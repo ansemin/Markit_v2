@@ -1,3 +1,4 @@
+import spaces  # Must be imported before any CUDA initialization
 import sys
 import os
 import subprocess
@@ -22,6 +23,13 @@ try:
         print("setup.sh completed")
 except Exception as e:
     print(f"Error running setup.sh: {e}")
+
+# Check if spaces module is installed (needed for ZeroGPU)
+try:
+    print("Spaces module found for ZeroGPU support")
+except ImportError:
+    print("WARNING: Spaces module not found. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "spaces"], check=False)
 
 # Check for PyTorch and CUDA availability (needed for GOT-OCR)
 try:
@@ -55,14 +63,6 @@ try:
 except ImportError:
     print("WARNING: NumPy not installed. Installing NumPy 1.26.3...")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "numpy==1.26.3"], check=False)
-
-# Check if spaces module is installed (needed for ZeroGPU)
-try:
-    import spaces
-    print("Spaces module found for ZeroGPU support")
-except ImportError:
-    print("WARNING: Spaces module not found. Installing...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "spaces"], check=False)
 
 # Try to load environment variables from .env file
 try:
