@@ -12,6 +12,7 @@ import sys
 import tempfile
 import shutil
 from typing import Dict, List, Optional, Any, Union
+import copy
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
@@ -109,21 +110,33 @@ class GotOcrParser(DocumentParser):
         # Log the OCR method being used
         logger.info(f"Using OCR method: {ocr_method or 'plain'}")
         
+        # Filter kwargs to remove any objects that can't be pickled (like thread locks)
+        safe_kwargs = {}
+        for key, value in kwargs.items():
+            # Skip thread locks and unpicklable objects
+            if not key.startswith('_') and not isinstance(value, type):
+                try:
+                    # Test if it can be copied - this helps identify unpicklable objects
+                    copy.deepcopy(value)
+                    safe_kwargs[key] = value
+                except (TypeError, pickle.PickleError):
+                    logger.warning(f"Skipping unpicklable kwarg: {key}")
+        
         # Process the image using transformers
         try:
             # Use the spaces.GPU decorator if available
             if HAS_SPACES:
-                return self._process_image_with_gpu(
-                    str(file_path), 
-                    use_format=use_format,
-                    **kwargs
-                )
+                # Use string path instead of Path object for better pickling
+                image_path_str = str(file_path)
+                
+                # Call the wrapper function that handles ZeroGPU safely
+                return self._safe_gpu_process(image_path_str, use_format, **safe_kwargs)
             else:
                 # Fallback for environments without spaces
                 return self._process_image_without_gpu(
                     str(file_path), 
                     use_format=use_format,
-                    **kwargs
+                    **safe_kwargs
                 )
             
         except Exception as e:
@@ -146,9 +159,27 @@ class GotOcrParser(DocumentParser):
                     "CUDA initialization error. This is likely due to model loading in the main process. "
                     "In ZeroGPU environments, CUDA must only be initialized within @spaces.GPU decorated functions."
                 )
+            elif "cannot pickle" in str(e):
+                raise RuntimeError(
+                    f"Serialization error with ZeroGPU: {str(e)}. "
+                    "This may be due to thread locks or other unpicklable objects being passed."
+                )
             
             # Generic error
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
+    
+    def _safe_gpu_process(self, image_path: str, use_format: bool, **kwargs):
+        """Safe wrapper for GPU processing to avoid pickle issues with thread locks."""
+        import pickle
+        
+        try:
+            # Call the GPU-decorated function with minimal, picklable arguments
+            return self._process_image_with_gpu(image_path, use_format)
+        except pickle.PickleError as e:
+            logger.error(f"Pickle error in ZeroGPU processing: {str(e)}")
+            # Fall back to CPU processing if pickling fails
+            logger.warning("Falling back to CPU processing due to pickling error")
+            return self._process_image_without_gpu(image_path, use_format=use_format)
     
     def _process_image_without_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
         """Process an image with GOT-OCR model when not using ZeroGPU."""
@@ -230,10 +261,11 @@ class GotOcrParser(DocumentParser):
     # Define the GPU-decorated function for ZeroGPU
     if HAS_SPACES:
         @spaces.GPU()  # Use default ZeroGPU allocation timeframe, matching HF implementation
-        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False) -> str:
             """Process an image with GOT-OCR model using GPU allocation.
             
             IMPORTANT: All model loading and CUDA operations must happen inside this method.
+            NOTE: Function must receive only picklable arguments (no thread locks, etc).
             """
             logger.info("Processing with ZeroGPU allocation")
             
@@ -327,12 +359,11 @@ class GotOcrParser(DocumentParser):
             return result.strip()
     else:
         # Define a dummy method if spaces is not available
-        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False) -> str:
             # This should never be called if HAS_SPACES is False
             return self._process_image_without_gpu(
                 image_path, 
-                use_format=use_format,
-                **kwargs
+                use_format=use_format
             )
     
     @classmethod
@@ -345,6 +376,7 @@ try:
     # Only check basic imports, no CUDA initialization
     import torch
     import transformers
+    import pickle  # Import pickle for serialization error handling
     ParserRegistry.register(GotOcrParser)
     logger.info("GOT-OCR parser registered successfully")
 except ImportError as e:
