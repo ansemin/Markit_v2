@@ -23,6 +23,10 @@ import latex2markdown
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# Constants
+MODEL_NAME = "stepfun-ai/GOT-OCR-2.0-hf"
+STOP_STR = "<|im_end|>"
+
 class GotOcrParser(DocumentParser):
     """Parser implementation using GOT-OCR 2.0 for document text extraction using transformers.
     
@@ -30,9 +34,8 @@ class GotOcrParser(DocumentParser):
     ZeroGPU and avoids subprocess complexity.
     """
     
-    # Class variables to hold model and processor
-    _model = None
-    _processor = None
+    # Class variables to hold model information only (not the actual model)
+    _model_loaded = False
     
     @classmethod
     def get_name(cls) -> str:
@@ -50,21 +53,6 @@ class GotOcrParser(DocumentParser):
                 "id": "format",
                 "name": "Formatted Text",
                 "default_params": {}
-            },
-            {
-                "id": "box",
-                "name": "OCR with Bounding Box",
-                "default_params": {"box": "[100,100,200,200]"}  # Default box coordinates
-            },
-            {
-                "id": "color",
-                "name": "OCR with Color Filter",
-                "default_params": {"color": "red"}  # Default color filter
-            },
-            {
-                "id": "multi_crop",
-                "name": "Multi-crop OCR",
-                "default_params": {}
             }
         ]
     
@@ -79,51 +67,11 @@ class GotOcrParser(DocumentParser):
             import torch
             import transformers
             
-            # Check CUDA availability if using torch
-            if hasattr(torch, 'cuda') and not torch.cuda.is_available():
-                logger.warning("CUDA is not available. GOT-OCR performs best with GPU acceleration.")
-            
+            # Only check if the modules are importable, DO NOT use torch.cuda here
+            # as it would initialize CUDA in the main process
             return True
         except ImportError as e:
             logger.error(f"Missing dependency: {e}")
-            return False
-    
-    @classmethod
-    def _load_model(cls) -> bool:
-        """Load the GOT-OCR model if it's not already loaded."""
-        if cls._model is not None and cls._processor is not None:
-            return True
-        
-        try:
-            import torch
-            from transformers import AutoModelForImageTextToText, AutoProcessor
-            
-            # Define the model name - using the HF model ID
-            model_name = "stepfun-ai/GOT-OCR-2.0-hf"
-            
-            # Get the device (CUDA if available, otherwise CPU)
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            logger.info(f"Loading GOT-OCR model from {model_name}")
-            
-            # Load processor
-            cls._processor = AutoProcessor.from_pretrained(model_name)
-            
-            # Load model
-            cls._model = AutoModelForImageTextToText.from_pretrained(
-                model_name, 
-                low_cpu_mem_usage=True,
-                device_map=device
-            )
-            
-            # Set model to evaluation mode
-            cls._model = cls._model.eval()
-            
-            logger.info("GOT-OCR model loaded successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to load GOT-OCR model: {str(e)}")
             return False
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
@@ -131,15 +79,13 @@ class GotOcrParser(DocumentParser):
         
         Args:
             file_path: Path to the image file
-            ocr_method: OCR method to use ('plain', 'format', 'box', 'color', 'multi_crop')
+            ocr_method: OCR method to use ('plain', 'format')
             **kwargs: Additional arguments to pass to the model
-                - box: For 'box' method, specify box coordinates [x1,y1,x2,y2]
-                - color: For 'color' method, specify color ('red', 'green', 'blue')
             
         Returns:
             Extracted text from the image, converted to Markdown if formatted
         """
-        # Verify dependencies are installed
+        # Verify dependencies are installed without initializing CUDA
         if not self._check_dependencies():
             raise ImportError(
                 "Required dependencies are missing. Please install: "
@@ -157,18 +103,11 @@ class GotOcrParser(DocumentParser):
                 f"Received file with extension: {file_path.suffix}"
             )
         
-        # Determine OCR mode and parameters based on method
+        # Determine OCR mode based on method
         use_format = ocr_method == "format"
-        use_box = ocr_method == "box"
-        use_color = ocr_method == "color"
-        use_multi_crop = ocr_method == "multi_crop"
         
         # Log the OCR method being used
         logger.info(f"Using OCR method: {ocr_method or 'plain'}")
-        
-        # Load the model if it's not already loaded
-        if not self._load_model():
-            raise RuntimeError("Failed to load GOT-OCR model")
         
         # Process the image using transformers
         try:
@@ -177,18 +116,13 @@ class GotOcrParser(DocumentParser):
                 return self._process_image_with_gpu(
                     str(file_path), 
                     use_format=use_format,
-                    use_box=use_box,
-                    use_color=use_color,
-                    use_multi_crop=use_multi_crop,
                     **kwargs
                 )
             else:
-                return self._process_image(
+                # Fallback for environments without spaces
+                return self._process_image_without_gpu(
                     str(file_path), 
                     use_format=use_format,
-                    use_box=use_box,
-                    use_color=use_color,
-                    use_multi_crop=use_multi_crop,
                     **kwargs
                 )
             
@@ -207,41 +141,147 @@ class GotOcrParser(DocumentParser):
                     "CUDA device does not support bfloat16. This is a known issue with some GPUs. "
                     "Please try using a different parser or contact support."
                 )
+            elif "CUDA must not be initialized" in str(e):
+                raise RuntimeError(
+                    "CUDA initialization error. This is likely due to model loading in the main process. "
+                    "In ZeroGPU environments, CUDA must only be initialized within @spaces.GPU decorated functions."
+                )
             
             # Generic error
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
     
-    def _process_image(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
-        """Process an image with GOT-OCR model (no GPU decorator)."""
-        try:
-            from transformers.image_utils import load_image
+    def _process_image_without_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
+        """Process an image with GOT-OCR model when not using ZeroGPU."""
+        logger.warning("ZeroGPU not available. Using direct model loading, which may not work in Spaces.")
+        
+        # Import here to avoid CUDA initialization in main process
+        import torch
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+        from transformers.image_utils import load_image
+        
+        # Load the image
+        image = load_image(image_path)
+        
+        # Load processor and model
+        processor = AutoProcessor.from_pretrained(MODEL_NAME)
+        
+        # Use CPU if in main process to avoid CUDA initialization issues
+        device = "cpu"
+        model = AutoModelForImageTextToText.from_pretrained(
+            MODEL_NAME, 
+            low_cpu_mem_usage=True,
+            device_map=device
+        )
+        model = model.eval()
+        
+        # Process the image based on the selected OCR method
+        if use_format:
+            # Format mode
+            inputs = processor([image], return_tensors="pt", format=True)
+            # Keep on CPU to avoid CUDA initialization
+            
+            # Generate text
+            with torch.no_grad():
+                generate_ids = model.generate(
+                    **inputs,
+                    do_sample=False,
+                    tokenizer=processor.tokenizer,
+                    stop_strings=STOP_STR,
+                    max_new_tokens=4096,
+                )
+            
+            # Decode the generated text
+            result = processor.decode(
+                generate_ids[0, inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            )
+            
+            # Convert to Markdown if it's formatted
+            l2m = latex2markdown.LaTeX2Markdown(result)
+            result = l2m.to_markdown()
+        else:
+            # Plain text mode
+            inputs = processor([image], return_tensors="pt")
+            
+            # Generate text
+            with torch.no_grad():
+                generate_ids = model.generate(
+                    **inputs,
+                    do_sample=False,
+                    tokenizer=processor.tokenizer,
+                    stop_strings=STOP_STR,
+                    max_new_tokens=4096,
+                )
+            
+            # Decode the generated text
+            result = processor.decode(
+                generate_ids[0, inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            )
+        
+        # Clean up to free memory
+        del model
+        del processor
+        import gc
+        gc.collect()
+        
+        return result.strip()
+    
+    # Define the GPU-decorated function for ZeroGPU
+    if HAS_SPACES:
+        @spaces.GPU()  # Use default ZeroGPU allocation timeframe, matching HF implementation
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
+            """Process an image with GOT-OCR model using GPU allocation.
+            
+            IMPORTANT: All model loading and CUDA operations must happen inside this method.
+            """
+            logger.info("Processing with ZeroGPU allocation")
+            
+            # Imports inside the GPU-decorated function
             import torch
+            from transformers import AutoModelForImageTextToText, AutoProcessor
+            from transformers.image_utils import load_image
             
             # Load the image
             image = load_image(image_path)
             
-            # Define stop string
-            stop_str = "<|im_end|>"
+            # Now we can load the model inside the GPU-decorated function
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            logger.info(f"Loading GOT-OCR model from {MODEL_NAME} on {device}")
+            
+            # Load processor
+            processor = AutoProcessor.from_pretrained(MODEL_NAME)
+            
+            # Load model
+            model = AutoModelForImageTextToText.from_pretrained(
+                MODEL_NAME, 
+                low_cpu_mem_usage=True,
+                device_map=device
+            )
+            
+            # Set model to evaluation mode
+            model = model.eval()
             
             # Process the image with the model based on the selected OCR method
             if use_format:
                 # Format mode (for LaTeX, etc.)
-                inputs = self._processor([image], return_tensors="pt", format=True)
+                inputs = processor([image], return_tensors="pt", format=True)
                 if torch.cuda.is_available():
                     inputs = inputs.to("cuda")
                 
                 # Generate text
                 with torch.no_grad():
-                    generate_ids = self._model.generate(
+                    generate_ids = model.generate(
                         **inputs,
                         do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=stop_str,
+                        tokenizer=processor.tokenizer,
+                        stop_strings=STOP_STR,
                         max_new_tokens=4096,
                     )
                 
                 # Decode the generated text
-                result = self._processor.decode(
+                result = processor.decode(
                     generate_ids[0, inputs["input_ids"].shape[1]:],
                     skip_special_tokens=True,
                 )
@@ -249,190 +289,62 @@ class GotOcrParser(DocumentParser):
                 # Convert to Markdown if it's formatted
                 l2m = latex2markdown.LaTeX2Markdown(result)
                 result = l2m.to_markdown()
-                
-            elif use_box:
-                # Box-based OCR
-                box_coords = kwargs.get('box', '[100,100,200,200]')
-                if isinstance(box_coords, str):
-                    # Convert string representation to list if needed
-                    import json
-                    try:
-                        box_coords = json.loads(box_coords.replace("'", '"'))
-                    except json.JSONDecodeError:
-                        logger.warning(f"Invalid box format: {box_coords}. Using default.")
-                        box_coords = [100, 100, 200, 200]
-                
-                logger.info(f"Using box coordinates: {box_coords}")
-                
-                # Process with box parameter
-                inputs = self._processor([image], return_tensors="pt", box=box_coords)
-                if torch.cuda.is_available():
-                    inputs = inputs.to("cuda")
-                
-                # Generate text
-                with torch.no_grad():
-                    generate_ids = self._model.generate(
-                        **inputs,
-                        do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=stop_str,
-                        max_new_tokens=4096,
-                    )
-                
-                # Decode the generated text
-                result = self._processor.decode(
-                    generate_ids[0, inputs["input_ids"].shape[1]:],
-                    skip_special_tokens=True,
-                )
-            
-            elif use_color:
-                # Color-based OCR
-                color = kwargs.get('color', 'red')
-                logger.info(f"Using color filter: {color}")
-                
-                # Process with color parameter
-                inputs = self._processor([image], return_tensors="pt", color=color)
-                if torch.cuda.is_available():
-                    inputs = inputs.to("cuda")
-                
-                # Generate text
-                with torch.no_grad():
-                    generate_ids = self._model.generate(
-                        **inputs,
-                        do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=stop_str,
-                        max_new_tokens=4096,
-                    )
-                
-                # Decode the generated text
-                result = self._processor.decode(
-                    generate_ids[0, inputs["input_ids"].shape[1]:],
-                    skip_special_tokens=True,
-                )
-            
-            elif use_multi_crop:
-                # Multi-crop OCR
-                logger.info("Using multi-crop OCR")
-                
-                # Process with multi-crop parameter
-                inputs = self._processor(
-                    [image],
-                    return_tensors="pt",
-                    format=True,
-                    crop_to_patches=True,
-                    max_patches=5,
-                )
-                if torch.cuda.is_available():
-                    inputs = inputs.to("cuda")
-                
-                # Generate text
-                with torch.no_grad():
-                    generate_ids = self._model.generate(
-                        **inputs,
-                        do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=stop_str,
-                        max_new_tokens=4096,
-                    )
-                
-                # Decode the generated text
-                result = self._processor.decode(
-                    generate_ids[0, inputs["input_ids"].shape[1]:],
-                    skip_special_tokens=True,
-                )
-                
-                # Convert to Markdown as multi-crop uses format
-                l2m = latex2markdown.LaTeX2Markdown(result)
-                result = l2m.to_markdown()
-                
             else:
                 # Plain text mode
-                inputs = self._processor([image], return_tensors="pt")
+                inputs = processor([image], return_tensors="pt")
                 if torch.cuda.is_available():
                     inputs = inputs.to("cuda")
                 
                 # Generate text
                 with torch.no_grad():
-                    generate_ids = self._model.generate(
+                    generate_ids = model.generate(
                         **inputs,
                         do_sample=False,
-                        tokenizer=self._processor.tokenizer,
-                        stop_strings=stop_str,
+                        tokenizer=processor.tokenizer,
+                        stop_strings=STOP_STR,
                         max_new_tokens=4096,
                     )
                 
                 # Decode the generated text
-                result = self._processor.decode(
+                result = processor.decode(
                     generate_ids[0, inputs["input_ids"].shape[1]:],
                     skip_special_tokens=True,
                 )
             
             # Clean up the result
-            if result.endswith(stop_str):
-                result = result[:-len(stop_str)]
+            if result.endswith(STOP_STR):
+                result = result[:-len(STOP_STR)]
+            
+            # Clean up to free memory
+            del model
+            del processor
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.info("CUDA cache cleared")
             
             return result.strip()
-            
-        except Exception as e:
-            logger.error(f"Error in _process_image: {str(e)}")
-            raise
-    
-    # Define the GPU-decorated function for ZeroGPU
-    if HAS_SPACES:
-        @spaces.GPU(duration=180)  # Allocate up to 3 minutes for OCR processing
-        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
-            """Process an image with GOT-OCR model using GPU allocation."""
-            logger.info("Processing with ZeroGPU allocation")
-            return self._process_image(
-                image_path, 
-                use_format=use_format,
-                use_box=use_box,
-                use_color=use_color,
-                use_multi_crop=use_multi_crop,
-                **kwargs
-            )
     else:
         # Define a dummy method if spaces is not available
-        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, **kwargs) -> str:
             # This should never be called if HAS_SPACES is False
-            return self._process_image(
+            return self._process_image_without_gpu(
                 image_path, 
                 use_format=use_format,
-                use_box=use_box,
-                use_color=use_color,
-                use_multi_crop=use_multi_crop,
                 **kwargs
             )
     
     @classmethod
     def release_model(cls):
-        """Release the model resources."""
-        if cls._model is not None:
-            # Clear the model from memory
-            cls._model = None
-            cls._processor = None
-            
-            # Force garbage collection
-            import gc
-            gc.collect()
-            
-            # Clear CUDA cache if available
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    logger.info("CUDA cache cleared")
-            except ImportError:
-                pass
-            
-            logger.info("GOT-OCR model resources released")
+        """Release model resources - not needed with new implementation."""
+        logger.info("Model resources managed by ZeroGPU decorator")
 
 # Try to register the parser
 try:
-    # Only check basic imports, detailed dependency check happens in parse method
+    # Only check basic imports, no CUDA initialization
     import torch
-    from transformers import AutoModelForImageTextToText, AutoProcessor
+    import transformers
     ParserRegistry.register(GotOcrParser)
     logger.info("GOT-OCR parser registered successfully")
 except ImportError as e:
