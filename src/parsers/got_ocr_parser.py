@@ -227,9 +227,10 @@ class GotOcrParser(DocumentParser):
                 skip_special_tokens=True,
             )
             
-            # Convert to Markdown if it's formatted
-            l2m = latex2markdown.LaTeX2Markdown(result)
-            result = l2m.to_markdown()
+            # Return raw LaTeX output - let post-processing handle conversion
+            # This allows for more advanced conversion in the integration module
+            logger.info("Returning raw LaTeX output for external processing")
+            
         else:
             # Plain text mode
             inputs = processor([image], return_tensors="pt")
@@ -318,9 +319,9 @@ class GotOcrParser(DocumentParser):
                     skip_special_tokens=True,
                 )
                 
-                # Convert to Markdown if it's formatted
-                l2m = latex2markdown.LaTeX2Markdown(result)
-                result = l2m.to_markdown()
+                # Return raw LaTeX output - let post-processing handle conversion
+                # This allows for more advanced conversion in the integration module
+                logger.info("Returning raw LaTeX output for external processing")
             else:
                 # Plain text mode
                 inputs = processor([image], return_tensors="pt")

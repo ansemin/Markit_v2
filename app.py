@@ -50,8 +50,24 @@ try:
     import transformers
     print(f"Transformers version: {transformers.__version__}")
 except ImportError:
-    print("WARNING: Transformers not installed. Installing transformers from GitHub...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "git+https://github.com/huggingface/transformers.git@main", "accelerate", "verovio"], check=False)
+    print("WARNING: Transformers not installed. Installing from GitHub...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "git+https://github.com/huggingface/transformers.git@main"], check=False)
+
+# Check if latex2markdown module is installed (needed for LaTeX conversion)
+try:
+    import latex2markdown
+    print("LaTeX2Markdown module found for advanced LaTeX conversion")
+except ImportError:
+    print("WARNING: LaTeX2Markdown module not found. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "latex2markdown"], check=False)
+
+# Check if regex module is installed (needed for LaTeX conversion)
+try:
+    import regex
+    print(f"Regex module found: {regex.__version__ if hasattr(regex, '__version__') else 'version unknown'}")
+except ImportError:
+    print("WARNING: Regex module not found. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "regex>=2023.0.0"], check=False)
 
 # Check if numpy is installed with the correct version
 try:
