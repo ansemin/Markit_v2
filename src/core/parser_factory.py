@@ -7,9 +7,6 @@ import time
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
 
-# Import the GOT-OCR integration module for post-processing
-from src.parsers.got_ocr_integration import process_got_ocr_output
-
 
 class ParserFactory:
     """Factory for creating parser instances."""
@@ -94,10 +91,5 @@ class ParserFactory:
         # Check one more time after parsing completes
         if check_cancellation():
             return "Conversion cancelled."
-        
-        # Post-process the result for GOT-OCR parser
-        if "GOT-OCR" in parser_name:
-            logging.info(f"Post-processing GOT-OCR output for {ocr_method_name}")
-            result = process_got_ocr_output(result, ocr_method_name, output_format)
             
         return result 

@@ -29,7 +29,7 @@ echo "NumPy installed successfully"
 echo "Installing Python dependencies..."
 pip install -q -U pillow opencv-python
 pip install -q -U google-genai
-pip install -q -U latex2markdown regex>=2023.0.0
+pip install -q -U latex2markdown
 echo "Python dependencies installed successfully"
 
 # Install GOT-OCR transformers dependencies
