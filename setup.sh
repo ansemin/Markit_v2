@@ -14,13 +14,10 @@ if [ "$EUID" -eq 0 ]; then
     echo "Installing system dependencies..."
     apt-get update && apt-get install -y \
         wget \
-        pkg-config \
-        git \
-        tree  # Add tree for directory structure visualization
+        pkg-config
     echo "System dependencies installed successfully"
 else
     echo "Not running as root. Skipping system dependencies installation."
-    echo "Make sure git is installed on your system for GOT-OCR to work properly."
 fi
 
 # Install NumPy first as it's required by many other packages
@@ -30,61 +27,23 @@ echo "NumPy installed successfully"
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-pip install -q -U pillow opencv-python-headless
+pip install -q -U pillow opencv-python
 pip install -q -U google-genai
 pip install -q -U latex2markdown
 echo "Python dependencies installed successfully"
 
-# Install GOT-OCR dependencies
-echo "Installing GOT-OCR dependencies..."
-pip install -q -U torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0 safetensors==0.4.3 huggingface_hub
-echo "GOT-OCR dependencies installed successfully"
-
-# Install Hugging Face CLI
-echo "Installing Hugging Face CLI..."
-pip install -q -U "huggingface_hub[cli]"
-echo "Hugging Face CLI installed successfully"
+# Install GOT-OCR transformers dependencies
+echo "Installing GOT-OCR transformers dependencies..."
+pip install -q -U torch torchvision
+pip install -q -U "git+https://github.com/huggingface/transformers.git@main" accelerate verovio
+pip install -q -U "huggingface_hub[cli]>=0.19.0"
+pip install -q -U "numpy==1.26.3"  # Exact version as in original
+echo "GOT-OCR transformers dependencies installed successfully"
 
 # Install spaces module for ZeroGPU support
 echo "Installing spaces module for ZeroGPU support..."
 pip install -q -U spaces
 echo "Spaces module installed successfully"
-
-# Add debug section for GOT-OCR repo
-echo "===== GOT-OCR Repository Debugging ====="
-
-# Clone the repository for inspection (if it doesn't exist)
-TEMP_DIR="/tmp"
-REPO_DIR="${TEMP_DIR}/GOT-OCR2.0"
-
-if [ ! -d "$REPO_DIR" ]; then
-    echo "Cloning GOT-OCR2.0 repository for debugging..."
-    git clone https://github.com/Ucas-HaoranWei/GOT-OCR2.0.git "$REPO_DIR"
-else
-    echo "GOT-OCR2.0 repository already exists at $REPO_DIR"
-fi
-
-# Check the repository structure
-echo "GOT-OCR2.0 repository structure:"
-if command -v tree &> /dev/null; then
-    tree -L 3 "$REPO_DIR"
-else
-    find "$REPO_DIR" -type d -maxdepth 3 | sort
-fi
-
-# Check if the demo script exists
-DEMO_SCRIPT="${REPO_DIR}/GOT/demo/run_ocr_2.0.py"
-if [ -f "$DEMO_SCRIPT" ]; then
-    echo "Demo script found at: $DEMO_SCRIPT"
-else
-    echo "ERROR: Demo script not found at: $DEMO_SCRIPT"
-    
-    # Search for the script in the repository
-    echo "Searching for run_ocr_2.0.py in the repository..."
-    find "$REPO_DIR" -name "run_ocr_2.0.py" -type f
-fi
-
-echo "===== End of GOT-OCR Debugging ====="
 
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then

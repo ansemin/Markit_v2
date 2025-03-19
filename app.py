@@ -3,7 +3,6 @@ import os
 import subprocess
 import shutil
 from pathlib import Path
-import urllib.request
 import logging
 
 # Configure logging - Add this section to suppress httpx logs
@@ -24,28 +23,38 @@ try:
 except Exception as e:
     print(f"Error running setup.sh: {e}")
 
-# Check if git is installed (needed for GOT-OCR)
+# Check for PyTorch and CUDA availability (needed for GOT-OCR)
 try:
-    git_version = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
-    if git_version.returncode == 0:
-        print(f"Git found: {git_version.stdout.strip()}")
+    import torch
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"CUDA device: {torch.cuda.get_device_name(0)}")
+        print(f"CUDA version: {torch.version.cuda}")
     else:
-        print("WARNING: Git not found. GOT-OCR parser requires git for repository cloning.")
-except Exception:
-    print("WARNING: Git not found or not in PATH. GOT-OCR parser requires git for repository cloning.")
+        print("WARNING: CUDA not available. GOT-OCR performs best with GPU acceleration.")
+except ImportError:
+    print("WARNING: PyTorch not installed. Installing PyTorch...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch", "torchvision"], check=False)
 
-# Check if Hugging Face CLI is installed (needed for GOT-OCR)
+# Check if transformers is installed (needed for GOT-OCR)
 try:
-    hf_cli = subprocess.run(["huggingface-cli", "--version"], capture_output=True, text=True, check=False)
-    if hf_cli.returncode == 0:
-        print(f"Hugging Face CLI found: {hf_cli.stdout.strip()}")
-    else:
-        print("WARNING: Hugging Face CLI not found. GOT-OCR parser requires huggingface-cli for model downloads.")
-        print("Installing Hugging Face CLI...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub[cli]"], check=False)
-except Exception:
-    print("WARNING: Hugging Face CLI not found. Installing...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub[cli]"], check=False)
+    import transformers
+    print(f"Transformers version: {transformers.__version__}")
+except ImportError:
+    print("WARNING: Transformers not installed. Installing transformers from GitHub...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "git+https://github.com/huggingface/transformers.git@main", "accelerate", "verovio"], check=False)
+
+# Check if numpy is installed with the correct version
+try:
+    import numpy as np
+    print(f"NumPy version: {np.__version__}")
+    if np.__version__ != "1.26.3":
+        print("WARNING: NumPy version mismatch. Installing exact version 1.26.3...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "numpy==1.26.3"], check=False)
+except ImportError:
+    print("WARNING: NumPy not installed. Installing NumPy 1.26.3...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "numpy==1.26.3"], check=False)
 
 # Check if spaces module is installed (needed for ZeroGPU)
 try:

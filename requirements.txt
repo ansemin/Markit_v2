@@ -1,28 +1,27 @@
 # Core dependencies
 gradio==5.14.0
 markdown==3.7
-Pillow>=9.0.0,<11.0.0
-numpy<2.0.0
-spaces  # For ZeroGPU support
+pillow  # Match exact dependency from GOT-OCR
+numpy==1.26.3  # Match exact dependency from GOT-OCR
+
+# For ZeroGPU support
+spaces
 
 # Image processing
-opencv-python-headless>=4.5.0  # Headless version for server environments
+opencv-python  # Match exact dependency from GOT-OCR
 
 # Utility dependencies
 python-dotenv>=1.0.0
 pydantic==2.7.1
-gitpython>=3.1.0  # For cloning repositories
 latex2markdown>=0.1.0  # For LaTeX to Markdown conversion
 
 # Gemini API client
 google-genai>=0.1.0
 
-# GOT-OCR dependencies (as specified in documentation)
-torch==2.0.1
-torchvision==0.15.2
-transformers==4.37.2  # Pin to a specific version that works with safetensors 0.4.3
-tiktoken==0.6.0
-verovio==4.3.1
-accelerate==0.28.0
-safetensors==0.4.3  # Updated to meet minimum version required by accelerate
-huggingface_hub[cli]>=0.19.0  # For downloading models from Hugging Face
+# GOT-OCR dependencies - exactly as in original
+torch
+torchvision
+git+https://github.com/huggingface/transformers.git@main
+accelerate
+verovio  # Added missing dependency
+huggingface_hub[cli]>=0.19.0

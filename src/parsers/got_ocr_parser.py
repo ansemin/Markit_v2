@@ -2,7 +2,6 @@ from pathlib import Path
 import os
 import logging
 import sys
-import subprocess
 import tempfile
 import shutil
 from typing import Dict, List, Optional, Any, Union
@@ -17,35 +16,23 @@ except ImportError:
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
 
-# Import latex2markdown instead of custom converter
+# Import latex2markdown for conversion
 import latex2markdown
 
 # Configure logging
 logger = logging.getLogger(__name__)
-# Set logger level to DEBUG for more verbose output
 logger.setLevel(logging.DEBUG)
 
-# Add patch for bfloat16 at the module level
-if 'torch' in sys.modules:
-    torch_module = sys.modules['torch']
-    if hasattr(torch_module, 'bfloat16'):
-        # Create a reference to the original bfloat16 function
-        original_bfloat16 = torch_module.bfloat16
-        # Replace it with float16
-        torch_module.bfloat16 = torch_module.float16
-        logger.info("Patched torch.bfloat16 to use torch.float16 instead")
-
 class GotOcrParser(DocumentParser):
-    """Parser implementation using GOT-OCR 2.0 for document text extraction using GitHub repository.
+    """Parser implementation using GOT-OCR 2.0 for document text extraction using transformers.
     
-    This implementation uses the official GOT-OCR2.0 GitHub repository through subprocess calls
-    rather than loading the model directly through Hugging Face Transformers.
+    This implementation uses the transformers model directly for better integration with
+    ZeroGPU and avoids subprocess complexity.
     """
     
-    # Path to the GOT-OCR repository
-    _repo_path = None
-    _weights_path = None
-    _got_parent_dir = None  # New variable to store the parent directory of the GOT module
+    # Class variables to hold model and processor
+    _model = None
+    _processor = None
     
     @classmethod
     def get_name(cls) -> str:
@@ -63,6 +50,21 @@ class GotOcrParser(DocumentParser):
                 "id": "format",
                 "name": "Formatted Text",
                 "default_params": {}
+            },
+            {
+                "id": "box",
+                "name": "OCR with Bounding Box",
+                "default_params": {"box": "[100,100,200,200]"}  # Default box coordinates
+            },
+            {
+                "id": "color",
+                "name": "OCR with Color Filter",
+                "default_params": {"color": "red"}  # Default color filter
+            },
+            {
+                "id": "multi_crop",
+                "name": "Multi-crop OCR",
+                "default_params": {}
             }
         ]
     
@@ -76,22 +78,10 @@ class GotOcrParser(DocumentParser):
         try:
             import torch
             import transformers
-            import tiktoken
             
             # Check CUDA availability if using torch
             if hasattr(torch, 'cuda') and not torch.cuda.is_available():
                 logger.warning("CUDA is not available. GOT-OCR performs best with GPU acceleration.")
-            
-            # Check for latex2markdown
-            try:
-                import latex2markdown
-                logger.info("latex2markdown package found")
-            except ImportError:
-                logger.warning("latex2markdown package not found. Installing...")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "latex2markdown"],
-                    check=True
-                )
             
             return True
         except ImportError as e:
@@ -99,107 +89,41 @@ class GotOcrParser(DocumentParser):
             return False
     
     @classmethod
-    def _setup_repository(cls) -> bool:
-        """Set up the GOT-OCR2.0 repository if it's not already set up."""
-        if cls._repo_path is not None and os.path.exists(cls._repo_path):
-            logger.debug(f"Repository already set up at: {cls._repo_path}")
+    def _load_model(cls) -> bool:
+        """Load the GOT-OCR model if it's not already loaded."""
+        if cls._model is not None and cls._processor is not None:
             return True
         
         try:
-            # Create a temporary directory for the repository
-            repo_dir = os.path.join(tempfile.gettempdir(), "GOT-OCR2.0")
-            logger.debug(f"Repository directory: {repo_dir}")
+            import torch
+            from transformers import AutoModelForImageTextToText, AutoProcessor
             
-            # Check if the repository already exists
-            if not os.path.exists(repo_dir):
-                logger.info(f"Cloning GOT-OCR2.0 repository to {repo_dir}...")
-                subprocess.run(
-                    ["git", "clone", "https://github.com/Ucas-HaoranWei/GOT-OCR2.0.git", repo_dir],
-                    check=True
-                )
-            else:
-                logger.info(f"GOT-OCR2.0 repository already exists at {repo_dir}, skipping clone")
+            # Define the model name - using the HF model ID
+            model_name = "stepfun-ai/GOT-OCR-2.0-hf"
             
-            cls._repo_path = repo_dir
+            # Get the device (CUDA if available, otherwise CPU)
+            device = "cuda" if torch.cuda.is_available() else "cpu"
             
-            # Debug: List repository contents
-            logger.debug("Repository contents:")
-            try:
-                result = subprocess.run(
-                    ["find", repo_dir, "-type", "d", "-maxdepth", "3"],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                for line in result.stdout.splitlines():
-                    logger.debug(f"  {line}")
-            except Exception as e:
-                logger.warning(f"Could not list repository contents: {e}")
+            logger.info(f"Loading GOT-OCR model from {model_name}")
             
-            # Check if the demo script exists
-            demo_script = os.path.join(repo_dir, "GOT", "demo", "run_ocr_2.0.py")
-            if os.path.exists(demo_script):
-                logger.info(f"Found demo script at: {demo_script}")
-                cls._got_parent_dir = repo_dir  # Parent dir is the repo dir
-            else:
-                logger.warning(f"Demo script not found at expected path: {demo_script}")
-                # Try to find it
-                logger.info("Searching for run_ocr_2.0.py in the repository...")
-                try:
-                    find_result = subprocess.run(
-                        ["find", repo_dir, "-name", "run_ocr_2.0.py", "-type", "f"],
-                        check=True,
-                        capture_output=True,
-                        text=True
-                    )
-                    if find_result.stdout.strip():
-                        found_paths = find_result.stdout.strip().splitlines()
-                        logger.info(f"Found script at alternative locations: {found_paths}")
-                        # Use the first found path as fallback
-                        if found_paths:
-                            alternative_path = found_paths[0]
-                            logger.info(f"Using alternative path: {alternative_path}")
-                            
-                            # Set the parent directory for the GOT module
-                            # We need to set it to the directory that contains the GOT-OCR-2.0-master directory
-                            if "GOT-OCR-2.0-master" in alternative_path:
-                                cls._got_parent_dir = os.path.join(repo_dir, "GOT-OCR-2.0-master")
-                                logger.info(f"Parent directory for GOT module: {cls._got_parent_dir}")
-                except Exception as e:
-                    logger.warning(f"Could not search for script: {e}")
+            # Load processor
+            cls._processor = AutoProcessor.from_pretrained(model_name)
             
-            # Set up the weights directory
-            weights_dir = os.path.join(repo_dir, "GOT_weights")
-            if not os.path.exists(weights_dir):
-                os.makedirs(weights_dir, exist_ok=True)
+            # Load model
+            cls._model = AutoModelForImageTextToText.from_pretrained(
+                model_name, 
+                low_cpu_mem_usage=True,
+                device_map=device
+            )
             
-            cls._weights_path = weights_dir
-            logger.debug(f"Weights directory: {weights_dir}")
+            # Set model to evaluation mode
+            cls._model = cls._model.eval()
             
-            # Check if weights exist, if not download them
-            weight_files = [f for f in os.listdir(weights_dir) if f.endswith(".bin") or f.endswith(".safetensors")]
-            if not weight_files:
-                logger.info("Downloading GOT-OCR2.0 weights...")
-                logger.info("This may take some time depending on your internet connection.")
-                logger.info("Downloading from Hugging Face repository...")
-                
-                # Use Hugging Face CLI to download the model
-                subprocess.run(
-                    ["huggingface-cli", "download", "stepfun-ai/GOT-OCR2_0", "--local-dir", weights_dir],
-                    check=True
-                )
-                
-                # Additional check to verify downloads
-                weight_files = [f for f in os.listdir(weights_dir) if f.endswith(".bin") or f.endswith(".safetensors")]
-                if not weight_files:
-                    logger.error("Failed to download weights. Please download them manually and place in GOT_weights directory.")
-                    return False
-            
-            logger.info("GOT-OCR2.0 repository and weights set up successfully")
+            logger.info("GOT-OCR model loaded successfully")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to set up GOT-OCR2.0 repository: {str(e)}")
+            logger.error(f"Failed to load GOT-OCR model: {str(e)}")
             return False
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
@@ -207,8 +131,10 @@ class GotOcrParser(DocumentParser):
         
         Args:
             file_path: Path to the image file
-            ocr_method: OCR method to use ('plain' or 'format')
+            ocr_method: OCR method to use ('plain', 'format', 'box', 'color', 'multi_crop')
             **kwargs: Additional arguments to pass to the model
+                - box: For 'box' method, specify box coordinates [x1,y1,x2,y2]
+                - color: For 'color' method, specify color ('red', 'green', 'blue')
             
         Returns:
             Extracted text from the image, converted to Markdown if formatted
@@ -217,13 +143,8 @@ class GotOcrParser(DocumentParser):
         if not self._check_dependencies():
             raise ImportError(
                 "Required dependencies are missing. Please install: "
-                "torch==2.0.1 torchvision==0.15.2 transformers==4.37.2 "
-                "tiktoken==0.6.0 verovio==4.3.1 accelerate==0.28.0"
+                "torch transformers"
             )
-        
-        # Set up the repository
-        if not self._setup_repository():
-            raise RuntimeError("Failed to set up GOT-OCR2.0 repository")
         
         # Validate file path and extension
         file_path = Path(file_path)
@@ -236,149 +157,41 @@ class GotOcrParser(DocumentParser):
                 f"Received file with extension: {file_path.suffix}"
             )
         
-        # Determine OCR type based on method
-        ocr_type = "format" if ocr_method == "format" else "ocr"
-        logger.info(f"Using OCR method: {ocr_type}")
+        # Determine OCR mode and parameters based on method
+        use_format = ocr_method == "format"
+        use_box = ocr_method == "box"
+        use_color = ocr_method == "color"
+        use_multi_crop = ocr_method == "multi_crop"
         
-        # Check if render is specified in kwargs
-        render = kwargs.get('render', False)
+        # Log the OCR method being used
+        logger.info(f"Using OCR method: {ocr_method or 'plain'}")
         
-        # Process the image using the GOT-OCR repository
+        # Load the model if it's not already loaded
+        if not self._load_model():
+            raise RuntimeError("Failed to load GOT-OCR model")
+        
+        # Process the image using transformers
         try:
-            logger.info(f"Processing image with GOT-OCR: {file_path}")
+            # Use the spaces.GPU decorator if available
+            if HAS_SPACES:
+                return self._process_image_with_gpu(
+                    str(file_path), 
+                    use_format=use_format,
+                    use_box=use_box,
+                    use_color=use_color,
+                    use_multi_crop=use_multi_crop,
+                    **kwargs
+                )
+            else:
+                return self._process_image(
+                    str(file_path), 
+                    use_format=use_format,
+                    use_box=use_box,
+                    use_color=use_color,
+                    use_multi_crop=use_multi_crop,
+                    **kwargs
+                )
             
-            # Create the command for running the GOT-OCR script
-            script_path = os.path.join(self._repo_path, "GOT", "demo", "run_ocr_2.0.py")
-            
-            # Check if the script exists at the expected path
-            if not os.path.exists(script_path):
-                logger.error(f"Script not found at: {script_path}")
-                
-                # Try to find the script within the repository
-                logger.info("Searching for run_ocr_2.0.py in the repository...")
-                try:
-                    find_result = subprocess.run(
-                        ["find", self._repo_path, "-name", "run_ocr_2.0.py", "-type", "f"],
-                        check=True,
-                        capture_output=True,
-                        text=True
-                    )
-                    found_paths = find_result.stdout.strip().splitlines()
-                    if found_paths:
-                        script_path = found_paths[0]
-                        logger.info(f"Found script at alternative location: {script_path}")
-                    else:
-                        raise FileNotFoundError(f"Could not find run_ocr_2.0.py in repository: {self._repo_path}")
-                except Exception as search_e:
-                    logger.error(f"Error searching for script: {str(search_e)}")
-                    raise FileNotFoundError(f"Script not found and search failed: {str(search_e)}")
-            
-            # Create a batch/shell script to run the Python script with the correct PYTHONPATH
-            # This ensures the GOT module can be imported and patches bfloat16
-            temp_script = None
-            try:
-                # Create a temporary script
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    temp_script = f.name
-                    parent_dir = self._got_parent_dir or os.path.dirname(os.path.dirname(script_path))
-                    
-                    # Add commands to the script
-                    f.write("#!/bin/bash\n")
-                    f.write(f"cd {parent_dir}\n")  # Change to parent directory
-                    f.write("export PYTHONPATH=$PYTHONPATH:$(pwd)\n")  # Add current directory to PYTHONPATH
-                    
-                    # Add a Python script to patch torch.bfloat16
-                    patch_script = os.path.join(tempfile.gettempdir(), "patch_torch.py")
-                    with open(patch_script, 'w') as patch_f:
-                        patch_f.write("""
-import sys
-import torch
-
-# Patch torch.bfloat16 to use torch.float16 instead
-if hasattr(torch, 'bfloat16'):
-    # Save reference to original bfloat16
-    original_bfloat16 = torch.bfloat16
-    # Replace with float16
-    torch.bfloat16 = torch.float16
-    print("Successfully patched torch.bfloat16 to use torch.float16")
-
-# Also patch torch.autocast context manager for CUDA
-original_autocast = torch.autocast
-def patched_autocast(*args, **kwargs):
-    # Force dtype to float16 when CUDA is involved
-    if args and args[0] == "cuda" and kwargs.get("dtype") == torch.bfloat16:
-        kwargs["dtype"] = torch.float16
-        print(f"Autocast: Changed bfloat16 to float16 for {args}")
-    return original_autocast(*args, **kwargs)
-
-torch.autocast = patched_autocast
-print("Successfully patched torch.autocast to ensure float16 is used instead of bfloat16")
-""")
-                    
-                    # Build the command with the patch included
-                    py_cmd = [
-                        sys.executable,
-                        "-c",
-                        f"import sys; sys.path.insert(0, '{parent_dir}'); "
-                        f"exec(open('{patch_script}').read()); "
-                        f"import runpy; runpy.run_path('{script_path}', run_name='__main__')"
-                    ]
-                    
-                    # Add the arguments
-                    py_cmd.extend(["--model-name", self._weights_path])
-                    py_cmd.extend(["--image-file", str(file_path)])
-                    py_cmd.extend(["--type", ocr_type])
-                    
-                    # Add render flag if required
-                    if render:
-                        py_cmd.append("--render")
-                    
-                    # Check if box or color is specified in kwargs
-                    if 'box' in kwargs and kwargs['box']:
-                        py_cmd.extend(["--box", str(kwargs['box'])])
-                    
-                    if 'color' in kwargs and kwargs['color']:
-                        py_cmd.extend(["--color", kwargs['color']])
-                    
-                    # Add the command to the script
-                    f.write(" ".join(py_cmd) + "\n")
-                
-                # Make the script executable
-                os.chmod(temp_script, 0o755)
-                
-                # Run the script with GPU access if available
-                result = self._run_with_gpu(temp_script)
-                
-                # If render was requested, find and return the path to the HTML file
-                if render:
-                    # The rendered results are in /results/demo.html according to the README
-                    html_result_path = os.path.join(self._repo_path, "results", "demo.html")
-                    if os.path.exists(html_result_path):
-                        with open(html_result_path, 'r') as f:
-                            html_content = f.read()
-                        return html_content
-                    else:
-                        logger.warning(f"Rendered HTML file not found at {html_result_path}")
-                
-                # Check if we need to convert from LaTeX to Markdown
-                if ocr_type == "format":
-                    logger.info("Converting formatted LaTeX output to Markdown using latex2markdown")
-                    # Use the latex2markdown package instead of custom converter
-                    l2m = latex2markdown.LaTeX2Markdown(result)
-                    result = l2m.to_markdown()
-                
-                return result
-            
-            finally:
-                # Clean up the temporary script
-                if temp_script and os.path.exists(temp_script):
-                    os.unlink(temp_script)
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error running GOT-OCR command: {str(e)}")
-            logger.error(f"Stderr: {e.stderr}")
-            raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
-                    
         except Exception as e:
             logger.error(f"Error processing image with GOT-OCR: {str(e)}")
             
@@ -389,57 +202,237 @@ print("Successfully patched torch.autocast to ensure float16 is used instead of 
                     "GPU out of memory while processing with GOT-OCR. "
                     "Try using a smaller image or a different parser."
                 )
+            elif "bfloat16" in str(e):
+                raise RuntimeError(
+                    "CUDA device does not support bfloat16. This is a known issue with some GPUs. "
+                    "Please try using a different parser or contact support."
+                )
             
             # Generic error
             raise RuntimeError(f"Error processing document with GOT-OCR: {str(e)}")
-
-    # Define a method that will be decorated with spaces.GPU to ensure GPU access
-    def _run_with_gpu(self, script_path):
-        """Run a script with GPU access using the spaces.GPU decorator if available."""
-        if HAS_SPACES:
-            # Use the spaces.GPU decorator to ensure GPU access
-            return self._run_script_with_gpu_allocation(script_path)
-        else:
-            # Fall back to regular execution if spaces module is not available
-            logger.info(f"Running command through wrapper script without ZeroGPU: {script_path}")
-            process = subprocess.run(
-                [script_path],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            return process.stdout.strip()
     
-    # This method will be decorated with spaces.GPU
+    def _process_image(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
+        """Process an image with GOT-OCR model (no GPU decorator)."""
+        try:
+            from transformers.image_utils import load_image
+            import torch
+            
+            # Load the image
+            image = load_image(image_path)
+            
+            # Define stop string
+            stop_str = "<|im_end|>"
+            
+            # Process the image with the model based on the selected OCR method
+            if use_format:
+                # Format mode (for LaTeX, etc.)
+                inputs = self._processor([image], return_tensors="pt", format=True)
+                if torch.cuda.is_available():
+                    inputs = inputs.to("cuda")
+                
+                # Generate text
+                with torch.no_grad():
+                    generate_ids = self._model.generate(
+                        **inputs,
+                        do_sample=False,
+                        tokenizer=self._processor.tokenizer,
+                        stop_strings=stop_str,
+                        max_new_tokens=4096,
+                    )
+                
+                # Decode the generated text
+                result = self._processor.decode(
+                    generate_ids[0, inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                )
+                
+                # Convert to Markdown if it's formatted
+                l2m = latex2markdown.LaTeX2Markdown(result)
+                result = l2m.to_markdown()
+                
+            elif use_box:
+                # Box-based OCR
+                box_coords = kwargs.get('box', '[100,100,200,200]')
+                if isinstance(box_coords, str):
+                    # Convert string representation to list if needed
+                    import json
+                    try:
+                        box_coords = json.loads(box_coords.replace("'", '"'))
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid box format: {box_coords}. Using default.")
+                        box_coords = [100, 100, 200, 200]
+                
+                logger.info(f"Using box coordinates: {box_coords}")
+                
+                # Process with box parameter
+                inputs = self._processor([image], return_tensors="pt", box=box_coords)
+                if torch.cuda.is_available():
+                    inputs = inputs.to("cuda")
+                
+                # Generate text
+                with torch.no_grad():
+                    generate_ids = self._model.generate(
+                        **inputs,
+                        do_sample=False,
+                        tokenizer=self._processor.tokenizer,
+                        stop_strings=stop_str,
+                        max_new_tokens=4096,
+                    )
+                
+                # Decode the generated text
+                result = self._processor.decode(
+                    generate_ids[0, inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                )
+            
+            elif use_color:
+                # Color-based OCR
+                color = kwargs.get('color', 'red')
+                logger.info(f"Using color filter: {color}")
+                
+                # Process with color parameter
+                inputs = self._processor([image], return_tensors="pt", color=color)
+                if torch.cuda.is_available():
+                    inputs = inputs.to("cuda")
+                
+                # Generate text
+                with torch.no_grad():
+                    generate_ids = self._model.generate(
+                        **inputs,
+                        do_sample=False,
+                        tokenizer=self._processor.tokenizer,
+                        stop_strings=stop_str,
+                        max_new_tokens=4096,
+                    )
+                
+                # Decode the generated text
+                result = self._processor.decode(
+                    generate_ids[0, inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                )
+            
+            elif use_multi_crop:
+                # Multi-crop OCR
+                logger.info("Using multi-crop OCR")
+                
+                # Process with multi-crop parameter
+                inputs = self._processor(
+                    [image],
+                    return_tensors="pt",
+                    format=True,
+                    crop_to_patches=True,
+                    max_patches=5,
+                )
+                if torch.cuda.is_available():
+                    inputs = inputs.to("cuda")
+                
+                # Generate text
+                with torch.no_grad():
+                    generate_ids = self._model.generate(
+                        **inputs,
+                        do_sample=False,
+                        tokenizer=self._processor.tokenizer,
+                        stop_strings=stop_str,
+                        max_new_tokens=4096,
+                    )
+                
+                # Decode the generated text
+                result = self._processor.decode(
+                    generate_ids[0, inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                )
+                
+                # Convert to Markdown as multi-crop uses format
+                l2m = latex2markdown.LaTeX2Markdown(result)
+                result = l2m.to_markdown()
+                
+            else:
+                # Plain text mode
+                inputs = self._processor([image], return_tensors="pt")
+                if torch.cuda.is_available():
+                    inputs = inputs.to("cuda")
+                
+                # Generate text
+                with torch.no_grad():
+                    generate_ids = self._model.generate(
+                        **inputs,
+                        do_sample=False,
+                        tokenizer=self._processor.tokenizer,
+                        stop_strings=stop_str,
+                        max_new_tokens=4096,
+                    )
+                
+                # Decode the generated text
+                result = self._processor.decode(
+                    generate_ids[0, inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                )
+            
+            # Clean up the result
+            if result.endswith(stop_str):
+                result = result[:-len(stop_str)]
+            
+            return result.strip()
+            
+        except Exception as e:
+            logger.error(f"Error in _process_image: {str(e)}")
+            raise
+    
+    # Define the GPU-decorated function for ZeroGPU
     if HAS_SPACES:
         @spaces.GPU(duration=180)  # Allocate up to 3 minutes for OCR processing
-        def _run_script_with_gpu_allocation(self, script_path):
-            """Run a script with GPU access using the spaces.GPU decorator."""
-            logger.info(f"Running command through wrapper script with ZeroGPU allocation: {script_path}")
-            process = subprocess.run(
-                [script_path],
-                check=True,
-                capture_output=True,
-                text=True
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
+            """Process an image with GOT-OCR model using GPU allocation."""
+            logger.info("Processing with ZeroGPU allocation")
+            return self._process_image(
+                image_path, 
+                use_format=use_format,
+                use_box=use_box,
+                use_color=use_color,
+                use_multi_crop=use_multi_crop,
+                **kwargs
             )
-            return process.stdout.strip()
     else:
         # Define a dummy method if spaces is not available
-        def _run_script_with_gpu_allocation(self, script_path):
+        def _process_image_with_gpu(self, image_path: str, use_format: bool = False, use_box: bool = False, use_color: bool = False, use_multi_crop: bool = False, **kwargs) -> str:
             # This should never be called if HAS_SPACES is False
-            raise NotImplementedError("spaces module is not available")
+            return self._process_image(
+                image_path, 
+                use_format=use_format,
+                use_box=use_box,
+                use_color=use_color,
+                use_multi_crop=use_multi_crop,
+                **kwargs
+            )
     
     @classmethod
     def release_model(cls):
         """Release the model resources."""
-        # No need to do anything here since we're not loading the model directly
-        # We're using subprocess calls instead
-        pass
+        if cls._model is not None:
+            # Clear the model from memory
+            cls._model = None
+            cls._processor = None
+            
+            # Force garbage collection
+            import gc
+            gc.collect()
+            
+            # Clear CUDA cache if available
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    logger.info("CUDA cache cleared")
+            except ImportError:
+                pass
+            
+            logger.info("GOT-OCR model resources released")
 
 # Try to register the parser
 try:
     # Only check basic imports, detailed dependency check happens in parse method
     import torch
+    from transformers import AutoModelForImageTextToText, AutoProcessor
     ParserRegistry.register(GotOcrParser)
     logger.info("GOT-OCR parser registered successfully")
 except ImportError as e:
