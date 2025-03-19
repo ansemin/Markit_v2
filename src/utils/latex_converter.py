@@ -28,7 +28,7 @@ class LatexConverter:
         processed_text = latex_text
         
         # Stage 1: Pre-process tables before standard conversion
-        processed_text = LatexConverter._preprocess_tables(processed_text)
+        processed_text, tables_dict = LatexConverter._extract_tables(processed_text)
         
         # Stage 2: Convert using latex2markdown library
         try:
@@ -42,63 +42,115 @@ class LatexConverter:
         # Stage 3: Post-process to fix any remaining issues
         processed_text = LatexConverter._postprocess_markdown(processed_text)
         
+        # Stage 4: Reinsert tables as markdown tables
+        processed_text = LatexConverter._reinsert_tables(processed_text, tables_dict)
+        
         return processed_text
     
     @staticmethod
-    def _preprocess_tables(latex_text: str) -> str:
+    def _extract_tables(latex_text: str) -> tuple:
         """
-        Pre-process LaTeX tables to ensure they convert correctly.
+        Extract tables from LaTeX and replace with placeholders.
         
         Args:
             latex_text: Raw LaTeX text
             
         Returns:
-            str: Pre-processed LaTeX text with table modifications
+            tuple: (processed text with placeholders, dict of tables)
         """
         processed_text = latex_text
+        tables_dict = {}
         
         # Find all tabular environments
         table_pattern = r'\\begin{tabular}(.*?)\\end{tabular}'
         tables = re.findall(table_pattern, processed_text, re.DOTALL)
         
         for i, table_content in enumerate(tables):
-            # Extract the column specification
-            col_spec_match = re.search(r'{([^}]*)}', table_content)
-            if not col_spec_match:
-                continue
-                
-            # Process the table content
-            rows_text = re.sub(r'{[^}]*}', '', table_content, count=1)  # Remove the column spec
+            placeholder = f"TABLE_PLACEHOLDER_{i}"
+            tables_dict[placeholder] = table_content
             
-            # Split into rows by \\ or \hline
-            rows = re.split(r'\\\\|\\hline', rows_text)
-            rows = [row.strip() for row in rows if row.strip()]
-            
-            # Calculate number of columns based on the number of & in the first non-empty row plus 1
-            for row in rows:
-                if '&' in row:
-                    num_cols = row.count('&') + 1
-                    break
-            else:
-                num_cols = 1  # Default if no & found
-            
-            # Create a clean tabular environment that's easier to parse
-            clean_table = f"\\begin{{tabular}}{{{'|'.join(['c'] * num_cols)}}}\n"
-            
-            for row in rows:
-                if row.strip():
-                    clean_row = ' & '.join([cell.strip() for cell in row.split('&')])
-                    clean_table += clean_row + " \\\\\n"
-            
-            clean_table += "\\end{tabular}"
-            
-            # Replace the original table with the clean one
+            # Replace the table with a placeholder
             processed_text = processed_text.replace(
-                f"\\begin{tabular}{table_content}\\end{tabular}",
-                clean_table
+                f"\\begin{{tabular}}{table_content}\\end{{tabular}}",
+                placeholder
             )
         
+        return processed_text, tables_dict
+    
+    @staticmethod
+    def _reinsert_tables(markdown_text: str, tables_dict: dict) -> str:
+        """
+        Convert LaTeX tables to Markdown tables and reinsert them.
+        
+        Args:
+            markdown_text: Processed markdown text with placeholders
+            tables_dict: Dictionary of tables extracted from LaTeX
+            
+        Returns:
+            str: Markdown text with tables converted and reinserted
+        """
+        processed_text = markdown_text
+        
+        for placeholder, table_content in tables_dict.items():
+            # Convert LaTeX table to Markdown table
+            markdown_table = LatexConverter._convert_table_to_markdown(table_content)
+            
+            # Replace the placeholder with the Markdown table
+            processed_text = processed_text.replace(placeholder, markdown_table)
+        
         return processed_text
+    
+    @staticmethod
+    def _convert_table_to_markdown(table_content: str) -> str:
+        """
+        Convert a LaTeX table to Markdown format.
+        
+        Args:
+            table_content: LaTeX table content
+            
+        Returns:
+            str: Markdown table
+        """
+        # Extract the column specification
+        col_spec_match = re.search(r'{([^}]*)}', table_content)
+        if not col_spec_match:
+            return f"[Table conversion failed]"
+            
+        # Process the table content
+        rows_text = re.sub(r'{[^}]*}', '', table_content, count=1)  # Remove the column spec
+        
+        # Split into rows by \\ or \hline
+        rows = re.split(r'\\\\|\\hline', rows_text)
+        rows = [row.strip() for row in rows if row.strip()]
+        
+        if not rows:
+            return "[Empty table]"
+        
+        # Calculate number of columns based on the number of & in the first non-empty row plus 1
+        num_cols = 1  # Default
+        for row in rows:
+            if '&' in row:
+                num_cols = row.count('&') + 1
+                break
+        
+        # Build markdown table
+        markdown_table = []
+        
+        # Add header row
+        if rows:
+            first_row = rows[0]
+            cells = [cell.strip() for cell in first_row.split('&')]
+            markdown_table.append("| " + " | ".join(cells + [""] * (num_cols - len(cells))) + " |")
+            
+            # Add separator row
+            markdown_table.append("| " + " | ".join(["---"] * num_cols) + " |")
+            
+            # Add data rows
+            for row in rows[1:]:
+                cells = [cell.strip() for cell in row.split('&')]
+                markdown_table.append("| " + " | ".join(cells + [""] * (num_cols - len(cells))) + " |")
+        
+        return "\n".join(markdown_table)
     
     @staticmethod
     def _postprocess_markdown(markdown_text: str) -> str:
@@ -113,38 +165,6 @@ class LatexConverter:
         """
         processed_text = markdown_text
         
-        # Fix common issues with tables
-        # 1. Fix pipe tables that may be malformed
-        table_lines = []
-        in_table = False
-        
-        for line in processed_text.split('\n'):
-            if '|' in line and not line.strip().startswith('|') and not in_table:
-                # This might be the start of a table, add the missing pipe
-                line = '| ' + line
-                in_table = True
-                
-            if in_table:
-                if '|' in line:
-                    # Ensure line ends with pipe
-                    if not line.strip().endswith('|'):
-                        line = line + ' |'
-                    table_lines.append(line)
-                else:
-                    # End of table
-                    in_table = False
-                    
-                    # If this is a table, add a header separator row after the first row
-                    if len(table_lines) > 0:
-                        col_count = table_lines[0].count('|') - 1
-                        separator = '| ' + ' | '.join(['---'] * col_count) + ' |'
-                        table_lines.insert(1, separator)
-                    
-                    # Add the current line and the processed table
-                    for table_line in table_lines:
-                        processed_text = processed_text.replace(table_line, table_line)
-                    table_lines = []
-            
         # Fix math blocks
         processed_text = re.sub(r'\\\[(.*?)\\\]', r'$$\1$$', processed_text, flags=re.DOTALL)
         processed_text = re.sub(r'\\\((.*?)\\\)', r'$\1$', processed_text, flags=re.DOTALL)
