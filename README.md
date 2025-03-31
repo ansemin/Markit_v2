@@ -280,3 +280,11 @@ When developing for Hugging Face Spaces with Stateless GPU:
 3. Ensure only picklable objects are passed to GPU-decorated functions
 4. Use wrapper functions to filter out unpicklable objects like thread locks
 5. For advanced use cases, consider implementing fallback mechanisms for serialization errors
+6. **Add `hf_oauth: true` to your Space's README.md metadata** to mitigate GPU quota limitations
+7. Sign in with your Hugging Face account when using the app to utilize your personal GPU quota
+8. For extensive GPU usage without quota limitations, a Hugging Face Pro subscription is required
+
+> **Note**: If you're implementing a Space with ZeroGPU on your own, you may encounter quota limitations ("GPU task aborted" errors). These can be mitigated by:
+> - Adding `hf_oauth: true` to your Space's metadata (as shown in this Space)
+> - Having users sign in with their Hugging Face accounts
+> - Upgrading to a Hugging Face Pro subscription for dedicated GPU resources
