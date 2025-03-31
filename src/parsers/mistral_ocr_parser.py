@@ -29,7 +29,7 @@ class MistralOcrParser(DocumentParser):
 
     @classmethod
     def get_name(cls) -> str:
-        return "Mistral OCR"
+        return "Mistral OCR (pdf, jpg, png)"
 
     @classmethod
     def get_supported_ocr_methods(cls) -> List[Dict[str, Any]]:

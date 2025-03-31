@@ -86,7 +86,7 @@ class MarkItDownParser(DocumentParser):
     
     @classmethod
     def get_name(cls) -> str:
-        return "MarkItDown"
+        return "MarkItDown (pdf, jpg, png, xlsx --best for xlsx)"
     
     @classmethod
     def get_supported_ocr_methods(cls) -> List[Dict[str, Any]]:
