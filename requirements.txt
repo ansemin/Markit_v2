@@ -1,5 +1,6 @@
 # Core dependencies
-gradio==5.14.0
+pydantic==2.10.6
+gradio
 markdown==3.7
 pillow  # Match exact dependency from GOT-OCR
 numpy==1.26.3  # Match exact dependency from GOT-OCR
@@ -12,10 +13,9 @@ opencv-python  # Match exact dependency from GOT-OCR
 
 # Utility dependencies
 python-dotenv>=1.0.0
-pydantic>=2.10.3
 
 # Gemini API client
-google-genai>=0.1.0
+google-genai==1.5.0
 
 # Mistral AI client
 mistralai>=1.0.0
