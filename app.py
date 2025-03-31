@@ -64,6 +64,19 @@ except ImportError:
     print("WARNING: NumPy not installed. Installing NumPy 1.26.3...")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "numpy==1.26.3"], check=False)
 
+# Check if markitdown is installed
+try:
+    from markitdown import MarkItDown
+    print("MarkItDown is installed")
+except ImportError:
+    print("WARNING: MarkItDown not installed. Installing...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "markitdown[all]"], check=False)
+    try:
+        from markitdown import MarkItDown
+        print("MarkItDown installed successfully")
+    except ImportError:
+        print("ERROR: Failed to install MarkItDown")
+
 # Try to load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -72,15 +85,22 @@ try:
 except ImportError:
     print("python-dotenv not installed, skipping .env file loading")
 
-# Load Gemini API key from environment variable
+# Load API keys from environment variables
 gemini_api_key = os.getenv("GOOGLE_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 
-# Check if API key is available and print a message if not
+# Check if API keys are available and print messages
 if not gemini_api_key:
     print("Warning: GOOGLE_API_KEY environment variable not found. Gemini Flash parser and LaTeX to Markdown conversion may not work.")
 else:
     print(f"Found Gemini API key: {gemini_api_key[:5]}...{gemini_api_key[-5:] if len(gemini_api_key) > 10 else ''}")
     print("Gemini API will be used for LaTeX to Markdown conversion when using GOT-OCR with Formatted Text mode")
+
+if not openai_api_key:
+    print("Warning: OPENAI_API_KEY environment variable not found. LLM-based image description in MarkItDown may not work.")
+else:
+    print(f"Found OpenAI API key: {openai_api_key[:5]}...{openai_api_key[-5:] if len(openai_api_key) > 10 else ''}")
+    print("OpenAI API will be available for LLM-based image descriptions in MarkItDown")
 
 # Add the current directory to the Python path
 sys.path.append(current_dir)

@@ -29,6 +29,7 @@ echo "NumPy installed successfully"
 echo "Installing Python dependencies..."
 pip install -q -U pillow opencv-python
 pip install -q -U google-genai
+pip install -q -U openai>=1.1.0  # For LLM image description support
 # pip install -q -U latex2markdown - removed, now using Gemini API for LaTeX conversion
 echo "Python dependencies installed successfully"
 
@@ -44,6 +45,11 @@ echo "GOT-OCR transformers dependencies installed successfully"
 echo "Installing spaces module for ZeroGPU support..."
 pip install -q -U spaces
 echo "Spaces module installed successfully"
+
+# Install markitdown with all optional dependencies
+echo "Installing MarkItDown with all dependencies..."
+pip install -q -U 'markitdown[all]'
+echo "MarkItDown installed successfully"
 
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then

@@ -7,6 +7,15 @@ from pathlib import Path
 from src.core.converter import convert_file, set_cancellation_flag, is_conversion_in_progress
 from src.parsers.parser_registry import ParserRegistry
 
+# Import MarkItDown to check if it's available
+try:
+    from markitdown import MarkItDown
+    HAS_MARKITDOWN = True
+    logging.info("MarkItDown is available for use")
+except ImportError:
+    HAS_MARKITDOWN = False
+    logging.warning("MarkItDown is not available")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -158,8 +167,43 @@ def create_ui():
             margin-top: 15px;
             margin-bottom: 15px;
         }
+        
+        /* Style the app title */
+        .app-title {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        /* Info section */
+        .info-section {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
     """) as demo:
-        # Remove the header
+        # Add title and description 
+        gr.HTML(
+            """
+            <div class="app-title">
+                <h1>Document to Markdown Converter</h1>
+                <p>Convert documents to markdown format using various parsers including MarkItDown</p>
+            </div>
+            """
+        )
+        
+        # Add MarkItDown info block if it's available
+        if HAS_MARKITDOWN:
+            gr.HTML(
+                """
+                <div class="info-section">
+                    <strong>MarkItDown is available!</strong> Use it to convert various file formats 
+                    including PDF, Office documents, images, and more to Markdown format.
+                </div>
+                """
+            )
+        
         # State to track if cancellation is requested
         cancel_requested = gr.State(False)
         # State to store the conversion thread
@@ -168,13 +212,15 @@ def create_ui():
         output_format_state = gr.State("Markdown")
 
         # File input first
-        file_input = gr.File(label="Upload PDF", type="filepath")
+        file_input = gr.File(label="Upload Document", type="filepath")
         
         # Provider and OCR options below the file input
         with gr.Row(elem_classes=["provider-options-row"]):
             with gr.Column(scale=1):
                 parser_names = ParserRegistry.get_parser_names()
-                default_parser = parser_names[0] if parser_names else "PyPdfium"
+                
+                # Make MarkItDown the default parser if available
+                default_parser = next((p for p in parser_names if p == "MarkItDown"), parser_names[0] if parser_names else "PyPdfium")
                 
                 provider_dropdown = gr.Dropdown(
                     label="Provider",

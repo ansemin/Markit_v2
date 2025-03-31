@@ -24,3 +24,7 @@ git+https://github.com/huggingface/transformers.git@main
 accelerate
 verovio  # Added missing dependency
 huggingface_hub[cli]>=0.19.0
+
+# MarkItDown and its dependencies
+markitdown[all]
+openai>=1.1.0  # For LLM image description support

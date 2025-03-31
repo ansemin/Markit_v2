@@ -1,9 +1,8 @@
 import parsers  # Import all parsers to ensure they're registered
-
 from src.ui.ui import launch_ui
 
-
 def main():
+    # Launch the UI
     launch_ui(
         server_name="0.0.0.0",
         server_port=7860,

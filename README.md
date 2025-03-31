@@ -11,6 +11,71 @@ startup_script: setup.sh
 pinned: false
 ---
 
+# Document to Markdown Converter
+
+A Hugging Face Space that converts various document formats to Markdown, now with MarkItDown integration!
+
+## Features
+
+- Convert PDFs, Office documents, images, and more to Markdown
+- Multiple parser options:
+  - MarkItDown: For comprehensive document conversion
+  - GOT-OCR: For image-based OCR with LaTeX support
+  - Gemini Flash: For AI-powered text extraction
+- Download converted documents as Markdown files
+- Clean, responsive UI
+
+## Using MarkItDown
+
+This app integrates [Microsoft's MarkItDown](https://github.com/microsoft/markitdown) library, which supports a wide range of file formats:
+
+- PDF
+- PowerPoint (PPTX)
+- Word (DOCX)
+- Excel (XLSX)
+- Images (JPG, PNG)
+- Audio files (with transcription)
+- HTML
+- Text-based formats (CSV, JSON, XML)
+- ZIP files
+- YouTube URLs
+- EPubs
+- And more!
+
+## Environment Variables
+
+You can enhance the functionality by setting these environment variables:
+
+- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown
+- `GOOGLE_API_KEY`: Used for Gemini Flash parser and LaTeX to Markdown conversion
+
+## Usage
+
+1. Select a file to upload
+2. Choose "MarkItDown" as the parser
+3. Select "Standard Conversion"
+4. Click "Convert"
+5. View the Markdown output and download the converted file
+
+## Local Development
+
+1. Clone the repository
+2. Create a `.env` file based on `.env.example`
+3. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+4. Run the application:
+   ```
+   python app.py
+   ```
+
+## Credits
+
+- [MarkItDown](https://github.com/microsoft/markitdown) by Microsoft
+- [GOT-OCR](https://github.com/stepfun-ai/GOT-OCR-2.0) for image-based OCR
+- [Gradio](https://gradio.app/) for the UI framework
+
 # Markit: Document to Markdown Converter
 
 [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/Ansemin101/Markit)
