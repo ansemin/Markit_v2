@@ -144,10 +144,10 @@ def create_ui():
     with gr.Blocks(css="""
         /* Simple output container with only one scrollbar */
         .output-container {
-            max-height: 420px;  /* Changed from 600px to 70% of original height */
+            max-height: 420px;
             overflow-y: auto;
-            border: 1px solid #ddd;  /* Added border for better visual definition */
-            padding: 10px;  /* Added padding for better content spacing */
+            border: 1px solid #ddd;
+            padding: 10px;
         }
         
         /* Hide any scrollbars from parent containers */
@@ -167,44 +167,9 @@ def create_ui():
             margin-top: 15px;
             margin-bottom: 15px;
         }
-        
-        /* Style the app title */
-        .app-title {
-            text-align: center;
-            margin-bottom: 2px;
-            border-bottom: 1px solid #0B0B0D;
-            padding-bottom: 4px;
-        }
-        
-        /* Info section */
-        .info-section {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 14px;
-        }
     """) as demo:
-        # Add title and description 
-        gr.HTML(
-            """
-            <div class="app-title">
-                <h1>Document to Markdown Converter</h1>
-                <p>Convert documents to markdown format using various parsers including MarkItDown</p>
-            </div>
-            """
-        )
-        
-        # Add MarkItDown info block if it's available
-        if HAS_MARKITDOWN:
-            gr.HTML(
-                """
-                <div class="info-section">
-                    <strong>MarkItDown is available!</strong> Use it to convert various file formats 
-                    including PDF, Office documents, images, and more to Markdown format.
-                </div>
-                """
-            )
+        # Simple title - no fancy HTML or CSS
+        gr.Markdown("## Markit: Document to Markdown Converter")
         
         # State to track if cancellation is requested
         cancel_requested = gr.State(False)
