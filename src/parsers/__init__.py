@@ -3,6 +3,7 @@
 # Import all parsers to ensure they're registered
 from src.parsers.gemini_flash_parser import GeminiFlashParser
 from src.parsers.got_ocr_parser import GotOcrParser
+from src.parsers.mistral_ocr_parser import MistralOcrParser
 
 # Import MarkItDown parser if available - needs to be imported last so it's default
 try:

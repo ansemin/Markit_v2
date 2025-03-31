@@ -17,6 +17,9 @@ pydantic==2.7.1
 # Gemini API client
 google-genai>=0.1.0
 
+# Mistral AI client
+mistralai>=1.0.0
+
 # GOT-OCR dependencies - exactly as in original
 torch
 torchvision
