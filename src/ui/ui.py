@@ -171,7 +171,9 @@ def create_ui():
         /* Style the app title */
         .app-title {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 2px;
+            border-bottom: 1px solid #0B0B0D;
+            padding-bottom: 4px;
         }
         
         /* Info section */
