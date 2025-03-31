@@ -9,6 +9,7 @@ app_file: app.py
 build_script: build.sh
 startup_script: setup.sh
 pinned: false
+hf_oauth: true
 ---
 
 # Document to Markdown Converter
