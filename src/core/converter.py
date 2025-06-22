@@ -1,55 +1,30 @@
-import tempfile
 import logging
-import time
-import os
-from pathlib import Path
+import threading
+from typing import Optional, Tuple
 
-# Use relative imports instead of absolute imports
-from src.core.parser_factory import ParserFactory
+from src.core.config import config
+from src.core.exceptions import (
+    DocumentProcessingError,
+    ConversionError,
+    ConfigurationError
+)
+from src.services.document_service import DocumentService
 
 # Import all parsers to ensure they're registered
 from src import parsers
 
-# Import the LaTeX to Markdown converter
-try:
-    from src.core.latex_to_markdown_converter import convert_latex_to_markdown
-    HAS_GEMINI_CONVERTER = True
-except ImportError:
-    HAS_GEMINI_CONVERTER = False
-    logging.warning("LaTeX to Markdown converter not available. Raw LaTeX will be returned for formatted text.")
+# Global document service instance
+_document_service = DocumentService()
 
-# Reference to the cancellation flag from ui.py
-# This will be set by the UI when the cancel button is clicked
-conversion_cancelled = None  # Will be a threading.Event object
-# Flag to track if conversion is currently in progress
-_conversion_in_progress = False
-
-def set_cancellation_flag(flag):
+def set_cancellation_flag(flag: threading.Event) -> None:
     """Set the reference to the cancellation flag from ui.py"""
-    global conversion_cancelled
-    conversion_cancelled = flag
+    _document_service.set_cancellation_flag(flag)
 
-def is_conversion_in_progress():
+def is_conversion_in_progress() -> bool:
     """Check if conversion is currently in progress"""
-    global _conversion_in_progress
-    return _conversion_in_progress
+    return _document_service.is_conversion_in_progress()
 
-def check_cancellation():
-    """Check if cancellation has been requested"""
-    if conversion_cancelled and conversion_cancelled.is_set():
-        logging.info("Cancellation detected in check_cancellation")
-        return True
-    return False
-
-def safe_delete_file(file_path):
-    """Safely delete a file with error handling"""
-    if file_path and os.path.exists(file_path):
-        try:
-            os.unlink(file_path)
-        except Exception as e:
-            logging.error(f"Error cleaning up temp file {file_path}: {e}")
-
-def convert_file(file_path, parser_name, ocr_method_name, output_format):
+def convert_file(file_path: str, parser_name: str, ocr_method_name: str, output_format: str) -> Tuple[str, Optional[str]]:
     """
     Convert a file using the specified parser and OCR method.
     
@@ -62,165 +37,35 @@ def convert_file(file_path, parser_name, ocr_method_name, output_format):
     Returns:
         tuple: (content, download_file_path)
     """
-    global conversion_cancelled, _conversion_in_progress
+    if not file_path:
+        return "Please upload a file.", None
     
-    # Set the conversion in progress flag
-    _conversion_in_progress = True
-    
-    # Temporary file paths to clean up
-    temp_input = None
-    tmp_path = None
-    
-    # Ensure we clean up the flag when we're done
     try:
-        if not file_path:
-            return "Please upload a file.", None
-
-        # Check for cancellation
-        if check_cancellation():
-            logging.info("Cancellation detected at start of convert_file")
+        # Use the document service to handle conversion
+        content, output_path = _document_service.convert_document(
+            file_path=file_path,
+            parser_name=parser_name,
+            ocr_method_name=ocr_method_name,
+            output_format=output_format
+        )
+        
+        return content, output_path
+        
+    except ConversionError as e:
+        # Handle user-friendly conversion errors
+        if "cancelled" in str(e).lower():
             return "Conversion cancelled.", None
-
-        # Create a temporary file with English filename
-        try:
-            original_ext = Path(file_path).suffix
-            with tempfile.NamedTemporaryFile(suffix=original_ext, delete=False) as temp_file:
-                temp_input = temp_file.name
-                # Copy the content of original file to temp file
-                with open(file_path, 'rb') as original:
-                    # Read in smaller chunks and check for cancellation between chunks
-                    chunk_size = 1024 * 1024  # 1MB chunks
-                    while True:
-                        # Check for cancellation frequently
-                        if check_cancellation():
-                            logging.info("Cancellation detected during file copy")
-                            safe_delete_file(temp_input)
-                            return "Conversion cancelled.", None
-                        
-                        chunk = original.read(chunk_size)
-                        if not chunk:
-                            break
-                        temp_file.write(chunk)
-            file_path = temp_input
-        except Exception as e:
-            safe_delete_file(temp_input)
-            return f"Error creating temporary file: {e}", None
-
-        # Check for cancellation again
-        if check_cancellation():
-            logging.info("Cancellation detected after file preparation")
-            safe_delete_file(temp_input)
-            return "Conversion cancelled.", None
-
-        content = None
-        try:
-            # Use the parser factory to parse the document
-            start = time.time()
-            
-            # Pass the cancellation flag to the parser factory
-            content = ParserFactory.parse_document(
-                file_path=file_path,
-                parser_name=parser_name,
-                ocr_method_name=ocr_method_name,
-                output_format=output_format.lower(),
-                cancellation_flag=conversion_cancelled  # Pass the flag to parsers
-            )
-            
-            # If content indicates cancellation, return early
-            if content == "Conversion cancelled.":
-                logging.info("Parser reported cancellation")
-                safe_delete_file(temp_input)
-                return content, None
-            
-            duration = time.time() - start
-            logging.info(f"Processed in {duration:.2f} seconds.")
-            
-            # Check for cancellation after processing
-            if check_cancellation():
-                logging.info("Cancellation detected after processing")
-                safe_delete_file(temp_input)
-                return "Conversion cancelled.", None
-                
-            # Process LaTeX content for GOT-OCR formatted text
-            if parser_name == "GOT-OCR (jpg,png only)" and ocr_method_name == "Formatted Text" and HAS_GEMINI_CONVERTER:
-                logging.info("Converting LaTeX output to Markdown using Gemini API")
-                start_convert = time.time()
-                
-                # Check for cancellation before conversion
-                if check_cancellation():
-                    logging.info("Cancellation detected before LaTeX conversion")
-                    safe_delete_file(temp_input)
-                    return "Conversion cancelled.", None
-                
-                try:
-                    markdown_content = convert_latex_to_markdown(content)
-                    if markdown_content:
-                        content = markdown_content
-                        logging.info(f"LaTeX conversion completed in {time.time() - start_convert:.2f} seconds")
-                    else:
-                        logging.warning("LaTeX to Markdown conversion failed, using raw LaTeX output")
-                except Exception as e:
-                    logging.error(f"Error converting LaTeX to Markdown: {str(e)}")
-                    # Continue with the original content on error
-                
-                # Check for cancellation after conversion
-                if check_cancellation():
-                    logging.info("Cancellation detected after LaTeX conversion")
-                    safe_delete_file(temp_input)
-                    return "Conversion cancelled.", None
-                
-        except Exception as e:
-            safe_delete_file(temp_input)
-            return f"Error: {e}", None
-
-        # Determine the file extension based on the output format
-        if output_format == "Markdown":
-            ext = ".md"
-        elif output_format == "JSON":
-            ext = ".json"
-        elif output_format == "Text":
-            ext = ".txt"
-        elif output_format == "Document Tags":
-            ext = ".doctags"
-        else:
-            ext = ".txt"
-
-        # Check for cancellation again
-        if check_cancellation():
-            logging.info("Cancellation detected before output file creation")
-            safe_delete_file(temp_input)
-            return "Conversion cancelled.", None
-
-        try:
-            # Create a temporary file for download
-            with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False, encoding="utf-8") as tmp:
-                tmp_path = tmp.name
-                # Write in chunks and check for cancellation
-                chunk_size = 10000  # characters
-                for i in range(0, len(content), chunk_size):
-                    # Check for cancellation
-                    if check_cancellation():
-                        logging.info("Cancellation detected during output file writing")
-                        safe_delete_file(tmp_path)
-                        safe_delete_file(temp_input)
-                        return "Conversion cancelled.", None
-                    
-                    tmp.write(content[i:i+chunk_size])
-            
-            # Clean up the temporary input file
-            safe_delete_file(temp_input)
-            temp_input = None  # Mark as cleaned up
-                
-            return content, tmp_path
-        except Exception as e:
-            safe_delete_file(tmp_path)
-            safe_delete_file(temp_input)
-            return f"Error: {e}", None
-    finally:
-        # Always clean up any remaining temp files
-        safe_delete_file(temp_input)
-        if check_cancellation() and tmp_path:
-            safe_delete_file(tmp_path)
-            
-        # Always clear the conversion in progress flag when done
-        _conversion_in_progress = False
+        return f"Conversion failed: {e}", None
+        
+    except DocumentProcessingError as e:
+        # Handle document processing errors
+        return f"Document processing error: {e}", None
+        
+    except ConfigurationError as e:
+        # Handle configuration errors
+        return f"Configuration error: {e}", None
+        
+    except Exception as e:
+        # Handle unexpected errors
+        logging.error(f"Unexpected error in convert_file: {e}")
+        return f"Unexpected error: {e}", None

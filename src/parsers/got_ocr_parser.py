@@ -13,6 +13,7 @@ import tempfile
 import shutil
 from typing import Dict, List, Optional, Any, Union
 import copy
+import pickle
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
