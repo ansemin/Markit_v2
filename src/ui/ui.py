@@ -6,19 +6,26 @@ import logging
 from pathlib import Path
 from src.core.converter import convert_file, set_cancellation_flag, is_conversion_in_progress
 from src.parsers.parser_registry import ParserRegistry
+from src.core.config import config
+from src.core.exceptions import (
+    DocumentProcessingError,
+    UnsupportedFileTypeError,
+    FileSizeLimitError,
+    ConfigurationError
+)
+from src.core.logging_config import get_logger
+
+# Use centralized logging
+logger = get_logger(__name__)
 
 # Import MarkItDown to check if it's available
 try:
     from markitdown import MarkItDown
     HAS_MARKITDOWN = True
-    logging.info("MarkItDown is available for use")
+    logger.info("MarkItDown is available for use")
 except ImportError:
     HAS_MARKITDOWN = False
-    logging.warning("MarkItDown is not available")
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+    logger.warning("MarkItDown is not available")
 
 # Add a global variable to track cancellation state
 conversion_cancelled = threading.Event()
@@ -40,12 +47,33 @@ def validate_file_for_parser(file_path, parser_name):
     """Validate if the file type is supported by the selected parser."""
     if not file_path:
         return True, ""  # No file selected yet
+    
+    try:
+        file_path_obj = Path(file_path)
+        file_ext = file_path_obj.suffix.lower()
         
-    if "GOT-OCR" in parser_name:
-        file_ext = Path(file_path).suffix.lower()
-        if file_ext not in ['.jpg', '.jpeg', '.png']:
-            return False, "GOT-OCR only supports JPG and PNG formats."
-    return True, ""
+        # Check file size
+        if file_path_obj.exists():
+            file_size = file_path_obj.stat().st_size
+            if file_size > config.app.max_file_size:
+                size_mb = file_size / (1024 * 1024)
+                max_mb = config.app.max_file_size / (1024 * 1024)
+                return False, f"File size ({size_mb:.1f}MB) exceeds maximum allowed size ({max_mb:.1f}MB)"
+        
+        # Check file extension
+        if file_ext not in config.app.allowed_extensions:
+            return False, f"File type '{file_ext}' is not supported. Allowed types: {', '.join(config.app.allowed_extensions)}"
+        
+        # Parser-specific validation
+        if "GOT-OCR" in parser_name:
+            if file_ext not in ['.jpg', '.jpeg', '.png']:
+                return False, "GOT-OCR only supports JPG and PNG formats."
+        
+        return True, ""
+        
+    except Exception as e:
+        logger.error(f"Error validating file: {e}")
+        return False, f"Error validating file: {e}"
 
 def format_markdown_content(content):
     if not content:
