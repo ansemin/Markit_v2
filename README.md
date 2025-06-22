@@ -1,5 +1,5 @@
 ---
-title: Markit GOT OCR
+title: Markit_v2
 emoji: 📄
 colorFrom: blue
 colorTo: indigo
@@ -45,10 +45,26 @@ This app integrates [Microsoft's MarkItDown](https://github.com/microsoft/markit
 
 ## Environment Variables
 
-You can enhance the functionality by setting these environment variables:
+The application uses centralized configuration management. You can enhance functionality by setting these environment variables:
 
-- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown
+### 🔑 **API Keys:**
 - `GOOGLE_API_KEY`: Used for Gemini Flash parser and LaTeX to Markdown conversion
+- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown
+- `MISTRAL_API_KEY`: For Mistral OCR parser (if available)
+
+### ⚙️ **Configuration Options:**
+- `DEBUG`: Set to `true` for debug mode with verbose logging
+- `MAX_FILE_SIZE`: Maximum file size in bytes (default: 10MB)
+- `TEMP_DIR`: Directory for temporary files (default: ./temp)
+- `TESSERACT_PATH`: Custom path to Tesseract executable
+- `TESSDATA_PATH`: Path to Tesseract language data
+
+### 🤖 **Model Configuration:**
+- `GEMINI_MODEL`: Gemini model to use (default: gemini-1.5-flash)
+- `MISTRAL_MODEL`: Mistral model to use (default: pixtral-12b-2409)
+- `GOT_OCR_MODEL`: GOT-OCR model to use (default: stepfun-ai/GOT-OCR2_0)
+- `MODEL_TEMPERATURE`: Model temperature for AI responses (default: 0.1)
+- `MODEL_MAX_TOKENS`: Maximum tokens for AI responses (default: 4096)
 
 ## Usage
 
@@ -60,16 +76,33 @@ You can enhance the functionality by setting these environment variables:
 
 ## Local Development
 
+### 🚀 **Quick Start:**
 1. Clone the repository
-2. Create a `.env` file based on `.env.example`
-3. Install dependencies:
+2. Create a `.env` file with your API keys:
    ```
+   GOOGLE_API_KEY=your_gemini_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   MISTRAL_API_KEY=your_mistral_api_key_here
+   DEBUG=true
+   ```
+3. Install dependencies:
+   ```bash
    pip install -r requirements.txt
    ```
 4. Run the application:
-   ```
+   ```bash
+   # For full environment setup (HF Spaces compatible)
    python app.py
+   
+   # For local development (faster startup)
+   python run_app.py
    ```
+
+### 🧪 **Development Features:**
+- **Automatic Environment Setup**: Dependencies are checked and installed automatically
+- **Configuration Validation**: Startup validation reports missing API keys and configuration issues
+- **Enhanced Error Messages**: Detailed error reporting for debugging
+- **Centralized Logging**: Configurable logging levels and output formats
 
 ## Credits
 
@@ -94,21 +127,33 @@ Markit is a powerful tool that converts various document formats (PDF, DOCX, ima
 - **Multiple Document Formats**: Convert PDFs, Word documents, images, and other document formats
 - **Versatile Output Formats**: Export to Markdown, JSON, plain text, or document tags format
 - **Advanced Parsing Engines**:
-  - **PyPdfium**: Fast PDF parsing using the PDFium engine
-  - **Docling**: Advanced document structure analysis
+  - **MarkItDown**: Comprehensive document conversion (PDFs, Office docs, images, audio, etc.)
   - **Gemini Flash**: AI-powered conversion using Google's Gemini API
   - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only) with plain text and formatted text options
+  - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model for image-to-text conversion
 - **OCR Integration**: Extract text from images and scanned documents using Tesseract OCR
 - **Interactive UI**: User-friendly Gradio interface with page navigation for large documents
 - **AI-Powered Chat**: Interact with your documents using AI to ask questions about content
 - **ZeroGPU Support**: Optimized for Hugging Face Spaces with Stateless GPU environments
 
 ## System Architecture
-The application is built with a modular architecture:
-- **Core Engine**: Handles document conversion and processing workflows
-- **Parser Registry**: Central registry for all document parsers
-- **UI Layer**: Gradio-based web interface
-- **Service Layer**: Handles AI chat functionality and external services integration
+
+The application is built with a clean, layered architecture following modern software engineering principles:
+
+### 🏗️ **Core Architecture Components:**
+- **Entry Point** (`app.py`): HF Spaces-compatible application launcher with environment setup
+- **Configuration Layer** (`src/core/config.py`): Centralized configuration management with validation
+- **Service Layer** (`src/services/`): Business logic for document processing and external services
+- **Core Engine** (`src/core/`): Document conversion workflows and utilities
+- **Parser Registry** (`src/parsers/`): Extensible parser system with standardized interfaces
+- **UI Layer** (`src/ui/`): Gradio-based web interface with enhanced error handling
+
+### 🎯 **Key Architectural Features:**
+- **Separation of Concerns**: Clean boundaries between UI, business logic, and core utilities
+- **Centralized Configuration**: All settings, API keys, and validation in one place
+- **Custom Exception Hierarchy**: Proper error handling with user-friendly messages
+- **Plugin Architecture**: Easy addition of new document parsers
+- **HF Spaces Optimized**: Maintains compatibility with Hugging Face deployment requirements
 
 ## Installation
 
@@ -187,10 +232,10 @@ build:
 ### Document Conversion
 1. Upload your document using the file uploader
 2. Select a parser provider:
-   - **PyPdfium**: Best for standard PDFs with selectable text
-   - **Docling**: Best for complex document layouts
+   - **MarkItDown**: Best for comprehensive document conversion (supports PDFs, Office docs, images, audio, etc.)
    - **Gemini Flash**: Best for AI-powered conversions (requires API key)
    - **GOT-OCR**: Best for high-quality OCR on images (JPG/PNG only)
+   - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model (requires API key)
 3. Choose an OCR option based on your selected parser:
    - **None**: No OCR processing (for documents with selectable text)
    - **Tesseract**: Basic OCR using Tesseract
@@ -205,6 +250,21 @@ build:
 5. Click "Convert" to process your document
 6. Navigate through pages using the navigation buttons for multi-page documents
 7. Download the converted content in your selected format
+
+## Configuration & Error Handling
+
+### 🔧 **Automatic Configuration:**
+The application includes intelligent configuration management that:
+- Validates API keys and reports availability at startup
+- Checks for required dependencies and installs them automatically
+- Provides helpful warnings for missing optional components
+- Reports which parsers are available based on current configuration
+
+### 🛡️ **Enhanced Error Handling:**
+- **User-Friendly Messages**: Clear error descriptions instead of technical stack traces
+- **File Validation**: Automatic checking of file size and format compatibility
+- **Parser Availability**: Real-time detection of which parsers can be used
+- **Graceful Degradation**: Application continues working even if some parsers are unavailable
 
 ## Troubleshooting
 
@@ -239,37 +299,56 @@ build:
 ### Project Structure
 
 ```
-markit/
-├── app.py                  # Main application entry point
+markit_v2/
+├── app.py                  # Main application entry point (HF Spaces compatible)
+├── run_app.py              # 🆕 Lightweight app launcher for local development
 ├── setup.sh                # Setup script
 ├── build.sh                # Build script
 ├── requirements.txt        # Python dependencies
 ├── README.md               # Project documentation
-├── .env                    # Environment variables
+├── .env                    # Environment variables (local development)
 ├── .gitignore              # Git ignore file
 ├── .gitattributes          # Git attributes file
 ├── src/                    # Source code
 │   ├── __init__.py         # Package initialization
-│   ├── main.py             # Main module
-│   ├── core/               # Core functionality
+│   ├── main.py             # Application launcher
+│   ├── core/               # Core functionality and utilities
 │   │   ├── __init__.py     # Package initialization
-│   │   ├── converter.py    # Document conversion logic
-│   │   └── parser_factory.py # Parser factory
+│   │   ├── config.py       # 🆕 Centralized configuration management
+│   │   ├── exceptions.py   # 🆕 Custom exception hierarchy
+│   │   ├── logging_config.py # 🆕 Centralized logging setup
+│   │   ├── environment.py  # 🆕 Environment setup and dependency management
+│   │   ├── converter.py    # Document conversion orchestrator (refactored)
+│   │   ├── parser_factory.py # Parser factory pattern
+│   │   └── latex_to_markdown_converter.py # LaTeX conversion utility
+│   ├── services/           # Business logic layer
+│   │   ├── __init__.py     # Package initialization
+│   │   └── document_service.py # 🆕 Document processing service
 │   ├── parsers/            # Parser implementations
 │   │   ├── __init__.py     # Package initialization
-│   │   ├── parser_interface.py # Parser interface
-│   │   ├── parser_registry.py # Parser registry
-│   │   ├── docling_parser.py # Docling parser
+│   │   ├── parser_interface.py # Enhanced parser interface
+│   │   ├── parser_registry.py # Parser registry pattern
+│   │   ├── markitdown_parser.py # MarkItDown parser (updated)
 │   │   ├── got_ocr_parser.py # GOT-OCR parser for images
-│   │   └── pypdfium_parser.py # PyPDFium parser
-│   ├── ui/                 # User interface
-│   │   ├── __init__.py     # Package initialization
-│   │   └── ui.py           # Gradio UI implementation
-│   └── services/           # External services
-│       └── __init__.py     # Package initialization
-└── tests/                  # Tests
+│   │   ├── mistral_ocr_parser.py # 🆕 Mistral OCR parser
+│   │   └── gemini_flash_parser.py # Gemini Flash parser
+│   └── ui/                 # User interface layer
+│       ├── __init__.py     # Package initialization
+│       └── ui.py           # Gradio UI with enhanced error handling
+├── documents/              # Documentation and examples (gitignored)
+├── tessdata/               # Tesseract OCR data (gitignored)
+└── tests/                  # Tests (future)
     └── __init__.py         # Package initialization
 ```
+
+### 🆕 **New Architecture Components:**
+- **Configuration Management**: Centralized API keys, model settings, and app configuration (`src/core/config.py`)
+- **Exception Hierarchy**: Proper error handling with specific exception types (`src/core/exceptions.py`)
+- **Service Layer**: Business logic separated from UI and core utilities (`src/services/document_service.py`)
+- **Environment Management**: Automated dependency checking and setup (`src/core/environment.py`)
+- **Enhanced Parser Interface**: Validation, metadata, and cancellation support
+- **Lightweight Launcher**: Quick development startup with `run_app.py`
+- **Centralized Logging**: Configurable logging system (`src/core/logging_config.py`)
 
 ### ZeroGPU Integration Notes
 

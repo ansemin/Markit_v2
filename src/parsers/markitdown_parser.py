@@ -1,12 +1,13 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Set
 import io
 
 # Import the parser interface and registry
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
+from src.core.exceptions import DocumentProcessingError, ParserError
 
 # Check for MarkItDown availability
 try:
@@ -27,6 +28,7 @@ class MarkItDownParser(DocumentParser):
     """
     
     def __init__(self):
+        super().__init__()  # Initialize the base class (including _cancellation_flag)
         self.markdown_instance = None
         # Initialize MarkItDown instance
         if HAS_MARKITDOWN:
@@ -60,33 +62,43 @@ class MarkItDownParser(DocumentParser):
         Returns:
             str: Markdown representation of the document
         """
+        # Validate file first
+        self.validate_file(file_path)
+        
         # Check if MarkItDown is available
         if not HAS_MARKITDOWN or self.markdown_instance is None:
-            return "Error: MarkItDown is not available. Please install with 'pip install markitdown[all]'"
-            
-        # Get cancellation check function from kwargs
-        check_cancellation = kwargs.get('check_cancellation', lambda: False)
+            raise ParserError("MarkItDown is not available. Please install with 'pip install markitdown[all]'")
         
         # Check for cancellation before starting
-        if check_cancellation():
-            return "Conversion cancelled."
+        if self._check_cancellation():
+            raise DocumentProcessingError("Conversion cancelled")
             
         try:
             # Convert the file using the standard instance
-            result = self.markdown_instance.convert(file_path)
+            result = self.markdown_instance.convert(str(file_path))
                 
             # Check for cancellation after processing
-            if check_cancellation():
-                return "Conversion cancelled."
+            if self._check_cancellation():
+                raise DocumentProcessingError("Conversion cancelled")
                 
             return result.text_content
         except Exception as e:
             logger.error(f"Error converting file with MarkItDown: {str(e)}")
-            return f"Error: {str(e)}"
+            raise DocumentProcessingError(f"MarkItDown conversion failed: {str(e)}")
     
     @classmethod
     def get_name(cls) -> str:
         return "MarkItDown (pdf, jpg, png, xlsx --best for xlsx)"
+    
+    @classmethod
+    def get_supported_file_types(cls) -> Set[str]:
+        """Return a set of supported file extensions."""
+        return {".pdf", ".docx", ".xlsx", ".pptx", ".html", ".txt", ".md", ".json", ".xml", ".csv", ".jpg", ".jpeg", ".png"}
+    
+    @classmethod
+    def is_available(cls) -> bool:
+        """Check if this parser is available."""
+        return HAS_MARKITDOWN
     
     @classmethod
     def get_supported_ocr_methods(cls) -> List[Dict[str, Any]]:
