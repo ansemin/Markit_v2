@@ -85,3 +85,15 @@ test_gemini_parser.py
 # Ignore tessdata folder
 /tessdata/
 /tessdata/*
+
+# Ignore Claude.md
+Claude.md
+
+# Ignore .venv folder
+.venv/
+
+# Ignore .claude
+.claude/
+
+# Ignore backup file
+app_backup.py
