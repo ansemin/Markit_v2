@@ -12,12 +12,13 @@ pinned: false
 hf_oauth: true
 ---
 
-# Document to Markdown Converter
+# Document to Markdown Converter with RAG Chat
 
-A Hugging Face Space that converts various document formats to Markdown, now with MarkItDown integration!
+A Hugging Face Space that converts various document formats to Markdown and lets you chat with your documents using RAG (Retrieval-Augmented Generation)!
 
-## Features
+## ✨ Key Features
 
+### Document Conversion
 - Convert PDFs, Office documents, images, and more to Markdown
 - Multiple parser options:
   - MarkItDown: For comprehensive document conversion
@@ -25,6 +26,21 @@ A Hugging Face Space that converts various document formats to Markdown, now wit
   - GOT-OCR: For image-based OCR with LaTeX support
   - Gemini Flash: For AI-powered text extraction
 - Download converted documents as Markdown files
+
+### 🤖 RAG Chat with Documents
+- **Chat with your converted documents** using advanced AI
+- **Intelligent document retrieval** using vector embeddings
+- **Markdown-aware chunking** that preserves tables and code blocks
+- **Streaming chat responses** for real-time interaction
+- **Chat history management** with session persistence
+- **Usage limits** to prevent abuse on public spaces
+- **Powered by Gemini 2.5 Flash** for high-quality responses
+- **OpenAI embeddings** for accurate document retrieval
+
+### User Interface
+- **Dual-tab interface**: Document Converter + Chat
+- **Real-time status monitoring** for RAG system
+- **Auto-ingestion** of converted documents into chat system
 - Clean, responsive UI
 
 ## Using MarkItDown & Docling
@@ -54,8 +70,8 @@ This app integrates multiple powerful document conversion libraries:
 The application uses centralized configuration management. You can enhance functionality by setting these environment variables:
 
 ### 🔑 **API Keys:**
-- `GOOGLE_API_KEY`: Used for Gemini Flash parser and LaTeX to Markdown conversion
-- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown
+- `GOOGLE_API_KEY`: Used for Gemini Flash parser, LaTeX conversion, and **RAG chat functionality**
+- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown and **vector embeddings for RAG**
 - `MISTRAL_API_KEY`: For Mistral OCR parser (if available)
 
 ### ⚙️ **Configuration Options:**
@@ -82,15 +98,39 @@ The application uses centralized configuration management. You can enhance funct
 - `MODEL_TEMPERATURE`: Model temperature for AI responses (default: 0.1)
 - `MODEL_MAX_TOKENS`: Maximum tokens for AI responses (default: 4096)
 
+### 🧠 **RAG Configuration:**
+- `VECTOR_STORE_PATH`: Path for vector database storage (default: ./data/vector_store)
+- `CHAT_HISTORY_PATH`: Path for chat history storage (default: ./data/chat_history)
+- `EMBEDDING_MODEL`: OpenAI embedding model (default: text-embedding-3-small)
+- `CHUNK_SIZE`: Document chunk size for RAG (default: 1000)
+- `CHUNK_OVERLAP`: Overlap between chunks (default: 200)
+- `MAX_MESSAGES_PER_SESSION`: Chat limit per session (default: 50)
+- `MAX_MESSAGES_PER_HOUR`: Chat limit per hour (default: 100)
+- `RETRIEVAL_K`: Number of documents to retrieve (default: 4)
+- `RAG_MODEL`: Model for RAG chat (default: gemini-2.5-flash)
+- `RAG_TEMPERATURE`: Temperature for RAG responses (default: 0.1)
+- `RAG_MAX_TOKENS`: Max tokens for RAG responses (default: 4096)
+
 ## Usage
 
-1. Select a file to upload
-2. Choose your preferred parser:
+### Document Conversion
+1. Go to the **"Document Converter"** tab
+2. Select a file to upload
+3. Choose your preferred parser:
    - **"MarkItDown"** for comprehensive document conversion
    - **"Docling"** for advanced PDF understanding and table extraction
-3. Select an OCR method based on your chosen parser
-4. Click "Convert"
-5. View the Markdown output and download the converted file
+4. Select an OCR method based on your chosen parser
+5. Click "Convert"
+6. View the Markdown output and download the converted file
+7. **Documents are automatically added to the RAG system** for chat functionality
+
+### 🤖 Chat with Documents
+1. Go to the **"Chat with Documents"** tab
+2. Check the system status to ensure RAG components are ready
+3. Ask questions about your converted documents
+4. Enjoy real-time streaming responses with document context
+5. Use "New Session" to start fresh conversations
+6. Monitor your usage limits in the status panel
 
 ## Local Development
 
@@ -102,6 +142,11 @@ The application uses centralized configuration management. You can enhance funct
    OPENAI_API_KEY=your_openai_api_key_here
    MISTRAL_API_KEY=your_mistral_api_key_here
    DEBUG=true
+   
+   # RAG Configuration (optional - uses defaults if not set)
+   MAX_MESSAGES_PER_SESSION=50
+   MAX_MESSAGES_PER_HOUR=100
+   CHUNK_SIZE=1000
    ```
 3. Install dependencies:
    ```bash
@@ -334,7 +379,7 @@ markit_v2/
 │   ├── main.py             # Application launcher
 │   ├── core/               # Core functionality and utilities
 │   │   ├── __init__.py     # Package initialization
-│   │   ├── config.py       # 🆕 Centralized configuration management
+│   │   ├── config.py       # 🆕 Centralized configuration management (with RAG settings)
 │   │   ├── exceptions.py   # 🆕 Custom exception hierarchy
 │   │   ├── logging_config.py # 🆕 Centralized logging setup
 │   │   ├── environment.py  # 🆕 Environment setup and dependency management
@@ -353,9 +398,17 @@ markit_v2/
 │   │   ├── got_ocr_parser.py # GOT-OCR parser for images
 │   │   ├── mistral_ocr_parser.py # 🆕 Mistral OCR parser
 │   │   └── gemini_flash_parser.py # Gemini Flash parser
+│   ├── rag/                # 🆕 RAG (Retrieval-Augmented Generation) system
+│   │   ├── __init__.py     # Package initialization
+│   │   ├── embeddings.py   # OpenAI embedding model management
+│   │   ├── chunking.py     # Markdown-aware document chunking
+│   │   ├── vector_store.py # Chroma vector database management
+│   │   ├── memory.py       # Chat history and session management
+│   │   ├── chat_service.py # RAG chat service with Gemini 2.5 Flash
+│   │   └── ingestion.py    # Document ingestion pipeline
 │   └── ui/                 # User interface layer
 │       ├── __init__.py     # Package initialization
-│       └── ui.py           # Gradio UI with enhanced error handling
+│       └── ui.py           # Gradio UI with dual tabs (Converter + Chat)
 ├── documents/              # Documentation and examples (gitignored)
 ├── tessdata/               # Tesseract OCR data (gitignored)
 └── tests/                  # Tests (future)
@@ -370,6 +423,17 @@ markit_v2/
 - **Enhanced Parser Interface**: Validation, metadata, and cancellation support
 - **Lightweight Launcher**: Quick development startup with `run_app.py`
 - **Centralized Logging**: Configurable logging system (`src/core/logging_config.py`)
+- **🆕 RAG System**: Complete RAG implementation with vector search and chat capabilities
+
+### 🧠 **RAG System Architecture:**
+- **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
+- **Markdown-Aware Chunking** (`src/rag/chunking.py`): Preserves tables and code blocks as whole units
+- **Vector Store** (`src/rag/vector_store.py`): Chroma database with persistent storage
+- **Chat Memory** (`src/rag/memory.py`): Session management and conversation history
+- **Chat Service** (`src/rag/chat_service.py`): Streaming RAG responses with Gemini 2.5 Flash
+- **Document Ingestion** (`src/rag/ingestion.py`): Automated pipeline for converting documents to RAG-ready format
+- **Usage Limiting**: Anti-abuse measures for public deployment
+- **Auto-Ingestion**: Seamless integration with document conversion workflow
 
 ### ZeroGPU Integration Notes
 

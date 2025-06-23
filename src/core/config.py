@@ -76,6 +76,62 @@ class DoclingConfig:
 
 
 @dataclass
+class RAGConfig:
+    """Configuration for RAG (Retrieval-Augmented Generation) functionality."""
+    # Vector store settings
+    vector_store_path: str = "./data/vector_store"
+    collection_name: str = "markit_documents"
+    
+    # Chat history settings
+    chat_history_path: str = "./data/chat_history"
+    
+    # Embedding settings
+    embedding_model: str = "text-embedding-3-small"
+    embedding_chunk_size: int = 1000
+    
+    # Chunking settings
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    
+    # Chat limits
+    max_messages_per_session: int = 50
+    max_messages_per_hour: int = 100
+    
+    # Retrieval settings
+    retrieval_k: int = 4
+    retrieval_score_threshold: float = 0.5
+    
+    # LLM settings for RAG
+    rag_model: str = "gemini-2.5-flash"
+    rag_temperature: float = 0.1
+    rag_max_tokens: int = 4096
+    
+    def __post_init__(self):
+        """Load RAG configuration from environment variables."""
+        # For HF Spaces, ensure data directories are created
+        if os.getenv("SPACE_ID"):  # HF Spaces environment
+            base_data_path = "/tmp/data" if not os.access("./data", os.W_OK) else "./data"
+            self.vector_store_path = os.getenv("VECTOR_STORE_PATH", f"{base_data_path}/vector_store")
+            self.chat_history_path = os.getenv("CHAT_HISTORY_PATH", f"{base_data_path}/chat_history")
+        else:
+            self.vector_store_path = os.getenv("VECTOR_STORE_PATH", self.vector_store_path)
+            self.chat_history_path = os.getenv("CHAT_HISTORY_PATH", self.chat_history_path)
+        
+        self.collection_name = os.getenv("VECTOR_STORE_COLLECTION", self.collection_name)
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", self.embedding_model)
+        self.embedding_chunk_size = int(os.getenv("EMBEDDING_CHUNK_SIZE", self.embedding_chunk_size))
+        self.chunk_size = int(os.getenv("CHUNK_SIZE", self.chunk_size))
+        self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", self.chunk_overlap))
+        self.max_messages_per_session = int(os.getenv("MAX_MESSAGES_PER_SESSION", self.max_messages_per_session))
+        self.max_messages_per_hour = int(os.getenv("MAX_MESSAGES_PER_HOUR", self.max_messages_per_hour))
+        self.retrieval_k = int(os.getenv("RETRIEVAL_K", self.retrieval_k))
+        self.retrieval_score_threshold = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", self.retrieval_score_threshold))
+        self.rag_model = os.getenv("RAG_MODEL", self.rag_model)
+        self.rag_temperature = float(os.getenv("RAG_TEMPERATURE", self.rag_temperature))
+        self.rag_max_tokens = int(os.getenv("RAG_MAX_TOKENS", self.rag_max_tokens))
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     debug: bool = False
@@ -99,6 +155,7 @@ class Config:
         self.model = ModelConfig()
         self.docling = DoclingConfig()
         self.app = AppConfig()
+        self.rag = RAGConfig()
     
     def validate(self) -> Dict[str, Any]:
         """Validate configuration and return validation results."""
@@ -115,6 +172,13 @@ class Config:
         if not self.api.mistral_api_key:
             validation_results["warnings"].append("Mistral API key not found - Mistral parser will be unavailable")
         
+        # Check RAG dependencies
+        if not self.api.openai_api_key:
+            validation_results["warnings"].append("OpenAI API key not found - RAG embeddings will be unavailable")
+        
+        if not self.api.google_api_key:
+            validation_results["warnings"].append("Google API key not found - RAG chat will be unavailable")
+        
         # Check tesseract setup
         if not self.ocr.tesseract_path and not os.path.exists("/usr/bin/tesseract"):
             validation_results["warnings"].append("Tesseract not found in system PATH - OCR functionality may be limited")
@@ -124,6 +188,14 @@ class Config:
             os.makedirs(self.app.temp_dir, exist_ok=True)
         except Exception as e:
             validation_results["errors"].append(f"Cannot create temp directory {self.app.temp_dir}: {e}")
+            validation_results["valid"] = False
+        
+        # Check RAG directories
+        try:
+            os.makedirs(self.rag.vector_store_path, exist_ok=True)
+            os.makedirs(self.rag.chat_history_path, exist_ok=True)
+        except Exception as e:
+            validation_results["errors"].append(f"Cannot create RAG directories: {e}")
             validation_results["valid"] = False
         
         return validation_results
