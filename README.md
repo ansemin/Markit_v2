@@ -21,27 +21,33 @@ A Hugging Face Space that converts various document formats to Markdown, now wit
 - Convert PDFs, Office documents, images, and more to Markdown
 - Multiple parser options:
   - MarkItDown: For comprehensive document conversion
+  - Docling: For advanced PDF understanding with table structure recognition
   - GOT-OCR: For image-based OCR with LaTeX support
   - Gemini Flash: For AI-powered text extraction
 - Download converted documents as Markdown files
 - Clean, responsive UI
 
-## Using MarkItDown
+## Using MarkItDown & Docling
 
-This app integrates [Microsoft's MarkItDown](https://github.com/microsoft/markitdown) library, which supports a wide range of file formats:
+This app integrates multiple powerful document conversion libraries:
 
-- PDF
-- PowerPoint (PPTX)
-- Word (DOCX)
-- Excel (XLSX)
-- Images (JPG, PNG)
-- Audio files (with transcription)
-- HTML
-- Text-based formats (CSV, JSON, XML)
-- ZIP files
-- YouTube URLs
-- EPubs
-- And more!
+### MarkItDown
+[Microsoft's MarkItDown](https://github.com/microsoft/markitdown) library supports a wide range of file formats:
+
+### Docling
+[IBM's Docling](https://github.com/DS4SD/docling) provides advanced document understanding with:
+- **Advanced PDF parsing** with layout understanding, reading order, and table structure recognition
+- **Multiple OCR engines** including EasyOCR and Tesseract
+- **Document format support**: PDF, DOCX, XLSX, PPTX, HTML, Images (PNG, JPG, TIFF, BMP, WEBP), CSV
+- **Local execution** for sensitive data processing
+- **Formula and code understanding** with enrichment features
+- **Picture classification** and description capabilities
+
+### MarkItDown Features
+- PDF, PowerPoint (PPTX), Word (DOCX), Excel (XLSX)
+- Images (JPG, PNG), Audio files (with transcription)
+- HTML, Text-based formats (CSV, JSON, XML)
+- ZIP files, YouTube URLs, EPubs, and more!
 
 ## Environment Variables
 
@@ -59,6 +65,16 @@ The application uses centralized configuration management. You can enhance funct
 - `TESSERACT_PATH`: Custom path to Tesseract executable
 - `TESSDATA_PATH`: Path to Tesseract language data
 
+### 🔧 **Docling Configuration:**
+- `DOCLING_ARTIFACTS_PATH`: Path to pre-downloaded Docling models for offline use
+- `DOCLING_ENABLE_REMOTE_SERVICES`: Enable remote vision model services (default: false)
+- `DOCLING_ENABLE_TABLES`: Enable table structure recognition (default: true)
+- `DOCLING_ENABLE_CODE_ENRICHMENT`: Enable code block enrichment (default: false)
+- `DOCLING_ENABLE_FORMULA_ENRICHMENT`: Enable formula understanding (default: false)
+- `DOCLING_ENABLE_PICTURE_CLASSIFICATION`: Enable picture classification (default: false)
+- `DOCLING_GENERATE_PICTURE_IMAGES`: Generate picture images during processing (default: false)
+- `OMP_NUM_THREADS`: Number of CPU threads for OCR processing (default: 4)
+
 ### 🤖 **Model Configuration:**
 - `GEMINI_MODEL`: Gemini model to use (default: gemini-1.5-flash)
 - `MISTRAL_MODEL`: Mistral model to use (default: pixtral-12b-2409)
@@ -69,8 +85,10 @@ The application uses centralized configuration management. You can enhance funct
 ## Usage
 
 1. Select a file to upload
-2. Choose "MarkItDown" as the parser
-3. Select "Standard Conversion"
+2. Choose your preferred parser:
+   - **"MarkItDown"** for comprehensive document conversion
+   - **"Docling"** for advanced PDF understanding and table extraction
+3. Select an OCR method based on your chosen parser
 4. Click "Convert"
 5. View the Markdown output and download the converted file
 
@@ -128,6 +146,7 @@ Markit is a powerful tool that converts various document formats (PDF, DOCX, ima
 - **Versatile Output Formats**: Export to Markdown, JSON, plain text, or document tags format
 - **Advanced Parsing Engines**:
   - **MarkItDown**: Comprehensive document conversion (PDFs, Office docs, images, audio, etc.)
+  - **Docling**: Advanced PDF understanding with table structure, layout analysis, and multiple OCR engines
   - **Gemini Flash**: AI-powered conversion using Google's Gemini API
   - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only) with plain text and formatted text options
   - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model for image-to-text conversion
@@ -233,6 +252,7 @@ build:
 1. Upload your document using the file uploader
 2. Select a parser provider:
    - **MarkItDown**: Best for comprehensive document conversion (supports PDFs, Office docs, images, audio, etc.)
+   - **Docling**: Best for advanced PDF understanding with table structure recognition and layout analysis
    - **Gemini Flash**: Best for AI-powered conversions (requires API key)
    - **GOT-OCR**: Best for high-quality OCR on images (JPG/PNG only)
    - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model (requires API key)
@@ -329,6 +349,7 @@ markit_v2/
 │   │   ├── parser_interface.py # Enhanced parser interface
 │   │   ├── parser_registry.py # Parser registry pattern
 │   │   ├── markitdown_parser.py # MarkItDown parser (updated)
+│   │   ├── docling_parser.py # 🆕 Docling parser with advanced PDF understanding
 │   │   ├── got_ocr_parser.py # GOT-OCR parser for images
 │   │   ├── mistral_ocr_parser.py # 🆕 Mistral OCR parser
 │   │   └── gemini_flash_parser.py # Gemini Flash parser

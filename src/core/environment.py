@@ -134,6 +134,26 @@ class EnvironmentManager:
                 print(f"Error installing MarkItDown: {e}")
                 return False
     
+    def check_docling(self) -> bool:
+        """Check and install Docling library."""
+        try:
+            import docling
+            print("Docling is installed")
+            return True
+        except ImportError:
+            print("WARNING: Docling not installed. Installing...")
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "docling"], check=False)
+                import docling
+                print("Docling installed successfully")
+                return True
+            except ImportError:
+                print("ERROR: Failed to install Docling")
+                return False
+            except Exception as e:
+                print(f"Error installing Docling: {e}")
+                return False
+    
     def load_environment_variables(self) -> bool:
         """Load environment variables from .env file."""
         try:
@@ -215,6 +235,7 @@ class EnvironmentManager:
         results["transformers"] = self.check_transformers()
         results["numpy"] = self.check_numpy()
         results["markitdown"] = self.check_markitdown()
+        results["docling"] = self.check_docling()
         
         # Load environment variables
         results["env_vars"] = self.load_environment_variables()

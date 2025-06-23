@@ -4,11 +4,14 @@ import os
 import base64
 import tempfile
 import json
+import logging
 from PIL import Image
 import io
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
+from src.core.config import config
+from src.core.exceptions import DocumentProcessingError, ConversionError
 
 # Import the Mistral AI client
 try:
@@ -17,12 +20,12 @@ try:
 except ImportError:
     MISTRAL_AVAILABLE = False
 
-# Load API key from environment variable
-api_key = os.getenv("MISTRAL_API_KEY")
+# Get logger
+logger = logging.getLogger(__name__)
 
-# Check if API key is available and print a message if not
-if not api_key:
-    print("Warning: MISTRAL_API_KEY environment variable not found. Mistral OCR parser may not work.")
+# Check if API key is available and log a message if not
+if not config.api.mistral_api_key:
+    logger.warning("MISTRAL_API_KEY environment variable not found. Mistral OCR parser may not work.")
 
 class MistralOcrParser(DocumentParser):
     """Parser that uses Mistral OCR to convert documents to markdown."""
@@ -56,23 +59,23 @@ class MistralOcrParser(DocumentParser):
             with open(image_path, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode('utf-8')
         except FileNotFoundError:
-            print(f"Error: The file {image_path} was not found.")
-            return None
+            logger.error(f"File not found: {image_path}")
+            raise DocumentProcessingError(f"File not found: {image_path}")
         except Exception as e:
-            print(f"Error: {e}")
-            return None
+            logger.error(f"Error encoding file {image_path}: {e}")
+            raise DocumentProcessingError(f"Error encoding file: {e}")
     
     def parse(self, file_path: Union[str, Path], ocr_method: Optional[str] = None, **kwargs) -> str:
         """Parse a document using Mistral OCR."""
         if not MISTRAL_AVAILABLE:
-            raise ImportError(
+            raise DocumentProcessingError(
                 "The Mistral AI client is not installed. "
                 "Please install it with 'pip install mistralai'."
             )
         
-        # Use the globally loaded API key
-        if not api_key:
-            raise ValueError(
+        # Use the API key from centralized config
+        if not config.api.mistral_api_key:
+            raise DocumentProcessingError(
                 "MISTRAL_API_KEY environment variable is not set. "
                 "Please set it to your Mistral API key."
             )
@@ -82,7 +85,7 @@ class MistralOcrParser(DocumentParser):
         
         try:
             # Initialize the Mistral client
-            client = Mistral(api_key=api_key)
+            client = Mistral(api_key=config.api.mistral_api_key)
             
             # Determine file type based on extension
             file_path = Path(file_path)
@@ -96,10 +99,13 @@ class MistralOcrParser(DocumentParser):
                 # Use regular OCR for basic text extraction
                 return self._extract_with_ocr(client, file_path, file_extension)
             
+        except (DocumentProcessingError, ConversionError):
+            # Re-raise our custom exceptions
+            raise
         except Exception as e:
             error_message = f"Error parsing document with Mistral OCR: {str(e)}"
-            print(error_message)
-            return f"# Error\n\n{error_message}\n\nPlease check your API key and try again."
+            logger.error(error_message)
+            raise DocumentProcessingError(error_message)
     
     def _extract_with_ocr(self, client, file_path, file_extension):
         """Extract document content using basic OCR."""
@@ -126,28 +132,28 @@ class MistralOcrParser(DocumentParser):
                         document={
                             "type": "document_url",
                             "document_url": signed_url.url
-                        }
+                        },
+                        include_image_base64=True
                     )
                 except Exception as e:
                     # If file upload fails, try to use a direct URL method with base64
-                    print(f"Failed to upload PDF, trying alternate method: {str(e)}")
+                    logger.warning(f"Failed to upload PDF, trying alternate method: {str(e)}")
                     base64_pdf = self.encode_image(file_path)
                     
                     if base64_pdf:
                         ocr_response = client.ocr.process(
                             model="mistral-ocr-latest",
                             document={
-                                "type": "image_url",
-                                "image_url": f"data:application/pdf;base64,{base64_pdf}"
-                            }
+                                "type": "document_url",
+                                "document_url": f"data:application/pdf;base64,{base64_pdf}"
+                            },
+                            include_image_base64=True
                         )
                     else:
-                        return "# Error\n\nFailed to process PDF document."
+                        raise DocumentProcessingError("Failed to process PDF document")
             else:
                 # For images (jpg, png, etc.), use image_url with base64
                 base64_image = self.encode_image(file_path)
-                if not base64_image:
-                    return "# Error\n\nFailed to encode the image."
                 
                 mime_type = self._get_mime_type(file_extension)
                 
@@ -156,7 +162,8 @@ class MistralOcrParser(DocumentParser):
                     document={
                         "type": "image_url",
                         "image_url": f"data:{mime_type};base64,{base64_image}"
-                    }
+                    },
+                    include_image_base64=True
                 )
             
             # Process the OCR response
@@ -214,14 +221,18 @@ class MistralOcrParser(DocumentParser):
                 except Exception as e:
                     markdown_text = f"# Error Processing Response\n\nCould not process the OCR response: {str(e)}"
             
-            # If we still have no content, return an error
+            # If we still have no content, raise an error
             if not markdown_text:
-                return "# Error\n\nNo text was extracted from the document."
+                raise ConversionError("No text was extracted from the document")
             
             return f"# Document Content\n\n{markdown_text}"
         
+        except (DocumentProcessingError, ConversionError):
+            # Re-raise our custom exceptions
+            raise
         except Exception as e:
-            return f"# OCR Extraction Error\n\n{str(e)}"
+            logger.error(f"OCR extraction error: {str(e)}")
+            raise ConversionError(f"OCR extraction failed: {str(e)}")
     
     def _extract_with_document_understanding(self, client, file_path, file_extension):
         """Extract and understand document content using chat completion."""
@@ -267,14 +278,12 @@ class MistralOcrParser(DocumentParser):
                 
                 except Exception as e:
                     # Fall back to OCR if document understanding fails
-                    print(f"Document understanding failed, falling back to OCR: {str(e)}")
+                    logger.warning(f"Document understanding failed, falling back to OCR: {str(e)}")
                     return self._extract_with_ocr(client, file_path, file_extension)
             
             else:
                 # For images, encode to base64
                 base64_image = self.encode_image(file_path)
-                if not base64_image:
-                    return "# Error\n\nFailed to encode the image."
                 
                 mime_type = self._get_mime_type(file_extension)
                 
@@ -304,7 +313,8 @@ class MistralOcrParser(DocumentParser):
                 return chat_response.choices[0].message.content
         
         except Exception as e:
-            return f"# Document Understanding Error\n\n{str(e)}\n\nFalling back to OCR method."
+            logger.error(f"Document understanding error: {str(e)}")
+            raise ConversionError(f"Document understanding failed: {str(e)}")
     
     def _get_mime_type(self, file_extension: str) -> str:
         """Get the MIME type for a file extension."""
@@ -342,6 +352,7 @@ class MistralOcrParser(DocumentParser):
                 markdown += "| " + " | ".join(str(cell) for cell in row) + " |\n"
         
         return markdown
+    
 
 
 # Register the parser with the registry

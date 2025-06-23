@@ -37,10 +37,10 @@ class OCRConfig:
 class ModelConfig:
     """Configuration for AI model settings."""
     gemini_model: str = "gemini-2.5-flash"
-    mistral_model: str = "pixtral-12b-2409"
+    mistral_model: str = "mistral-ocr-latest"
     got_ocr_model: str = "stepfun-ai/GOT-OCR2_0"
     temperature: float = 0.1
-    max_tokens: int = 4096
+    max_tokens: int = 32768
     
     def __post_init__(self):
         """Load model configuration from environment variables."""
@@ -52,11 +52,35 @@ class ModelConfig:
 
 
 @dataclass
+class DoclingConfig:
+    """Configuration for Docling parser."""
+    artifacts_path: Optional[str] = None
+    enable_remote_services: bool = False
+    enable_tables: bool = True
+    enable_code_enrichment: bool = False
+    enable_formula_enrichment: bool = False
+    enable_picture_classification: bool = False
+    generate_picture_images: bool = False
+    ocr_cpu_threads: int = 4
+    
+    def __post_init__(self):
+        """Load Docling configuration from environment variables."""
+        self.artifacts_path = os.getenv("DOCLING_ARTIFACTS_PATH")
+        self.enable_remote_services = os.getenv("DOCLING_ENABLE_REMOTE_SERVICES", "false").lower() == "true"
+        self.enable_tables = os.getenv("DOCLING_ENABLE_TABLES", "true").lower() == "true"
+        self.enable_code_enrichment = os.getenv("DOCLING_ENABLE_CODE_ENRICHMENT", "false").lower() == "true"
+        self.enable_formula_enrichment = os.getenv("DOCLING_ENABLE_FORMULA_ENRICHMENT", "false").lower() == "true"
+        self.enable_picture_classification = os.getenv("DOCLING_ENABLE_PICTURE_CLASSIFICATION", "false").lower() == "true"
+        self.generate_picture_images = os.getenv("DOCLING_GENERATE_PICTURE_IMAGES", "false").lower() == "true"
+        self.ocr_cpu_threads = int(os.getenv("OMP_NUM_THREADS", self.ocr_cpu_threads))
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     debug: bool = False
     max_file_size: int = 10 * 1024 * 1024  # 10MB
-    allowed_extensions: tuple = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".tex", ".xlsx")
+    allowed_extensions: tuple = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".tex", ".xlsx", ".docx", ".pptx", ".html", ".xhtml", ".md", ".csv")
     temp_dir: str = "./temp"
     
     def __post_init__(self):
@@ -73,6 +97,7 @@ class Config:
         self.api = APIConfig()
         self.ocr = OCRConfig()
         self.model = ModelConfig()
+        self.docling = DoclingConfig()
         self.app = AppConfig()
     
     def validate(self) -> Dict[str, Any]:
@@ -115,6 +140,13 @@ class Config:
         
         # GOT-OCR is available if we have GPU or can use ZeroGPU
         available.append("got_ocr")
+        
+        # Docling is available if package is installed
+        try:
+            import docling
+            available.append("docling")
+        except ImportError:
+            pass
         
         return available
 

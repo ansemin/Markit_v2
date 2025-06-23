@@ -51,6 +51,11 @@ echo "Installing MarkItDown with all dependencies..."
 pip install -q -U 'markitdown[all]'
 echo "MarkItDown installed successfully"
 
+# Install Docling for advanced PDF understanding
+echo "Installing Docling..."
+pip install -q -U docling
+echo "Docling installed successfully"
+
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
     echo "Installing project in development mode..."

@@ -39,6 +39,13 @@ except ImportError as e:
     except ImportError:
         print("Installing MarkItDown...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "markitdown[all]"], check=False)
+    
+    try:
+        import docling
+        print("Docling is available")
+    except ImportError:
+        print("Installing Docling...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "docling"], check=False)
 
 # Import main function with fallback strategies (HF Spaces compatibility)
 try:
