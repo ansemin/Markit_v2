@@ -102,4 +102,4 @@ app_backup.py
 /data/
 
 # Ignore logs 
-==*
+=*
