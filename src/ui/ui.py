@@ -170,12 +170,22 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
     
     # Auto-ingest the converted document for RAG
     try:
+        # Read original file content for proper deduplication hashing
+        original_file_content = None
+        if file_path and Path(file_path).exists():
+            try:
+                with open(file_path, 'rb') as f:
+                    original_file_content = f.read().decode('utf-8', errors='ignore')
+            except Exception as e:
+                logger.warning(f"Could not read original file content: {e}")
+        
         conversion_result = {
             "markdown_content": content,
             "original_filename": Path(file_path).name if file_path else "unknown",
             "conversion_method": parser_name,
             "file_size": Path(file_path).stat().st_size if file_path and Path(file_path).exists() else 0,
-            "conversion_time": 0  # Could be tracked if needed
+            "conversion_time": 0,  # Could be tracked if needed
+            "original_file_content": original_file_content
         }
         
         success, ingestion_msg, stats = document_ingestion_service.ingest_from_conversion_result(conversion_result)

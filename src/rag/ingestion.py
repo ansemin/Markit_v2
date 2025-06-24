@@ -18,12 +18,11 @@ class DocumentIngestionService:
     
     def __init__(self):
         """Initialize the document ingestion service."""
-        self.processed_documents = set()  # Track processed document hashes
         logger.info("Document ingestion service initialized")
     
-    def create_document_hash(self, content: str) -> str:
-        """Create a hash for document content to avoid duplicates."""
-        return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
+    def create_file_hash(self, content: str) -> str:
+        """Create a full SHA-256 hash for file content to avoid duplicates."""
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
     
     def prepare_document_metadata(self, 
                                 source_path: Optional[str] = None, 
@@ -44,7 +43,6 @@ class DocumentIngestionService:
             "source": source_path or "user_upload",
             "doc_type": doc_type,
             "processed_at": datetime.now().isoformat(),
-            "source_id": self.create_document_hash(source_path or ""),
             "ingestion_version": "1.0"
         }
         
@@ -53,10 +51,35 @@ class DocumentIngestionService:
             
         return metadata
     
+    def check_duplicate_in_vector_store(self, file_hash: str) -> bool:
+        """Check if document with given file hash already exists in vector store."""
+        try:
+            existing_docs = vector_store_manager.get_vector_store()._collection.get(
+                where={"file_hash": file_hash},
+                limit=1
+            )
+            return len(existing_docs.get('ids', [])) > 0
+        except Exception as e:
+            logger.error(f"Error checking for duplicates: {e}")
+            return False
+    
+    def delete_existing_document(self, file_hash: str) -> bool:
+        """Delete existing document with given file hash from vector store."""
+        try:
+            vector_store_manager.get_vector_store()._collection.delete(
+                where={"file_hash": file_hash}
+            )
+            logger.info(f"Deleted existing document with hash: {file_hash}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting existing document: {e}")
+            return False
+    
     def ingest_markdown_content(self, 
                               markdown_content: str, 
                               source_path: Optional[str] = None,
-                              metadata: Optional[Dict[str, Any]] = None) -> Tuple[bool, str, Dict[str, Any]]:
+                              metadata: Optional[Dict[str, Any]] = None,
+                              original_file_content: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Ingest markdown content into the RAG system.
         
@@ -64,6 +87,7 @@ class DocumentIngestionService:
             markdown_content: The markdown content to ingest
             source_path: Optional source path/filename
             metadata: Optional additional metadata
+            original_file_content: Original file content for hash calculation
             
         Returns:
             Tuple of (success, message, ingestion_stats)
@@ -72,24 +96,34 @@ class DocumentIngestionService:
             if not markdown_content or not markdown_content.strip():
                 return False, "No content provided for ingestion", {}
             
-            # Create document hash to check for duplicates
-            content_hash = self.create_document_hash(markdown_content)
+            # Create file hash using original content if available, otherwise use markdown content
+            file_content_for_hash = original_file_content or markdown_content
+            file_hash = self.create_file_hash(file_content_for_hash)
             
-            if content_hash in self.processed_documents:
-                logger.info(f"Document already processed: {content_hash}")
-                return True, "Document already exists in the system", {"status": "duplicate"}
+            # Check for duplicates in vector store
+            is_duplicate = self.check_duplicate_in_vector_store(file_hash)
+            replacement_mode = False
             
-            # Prepare document metadata
+            if is_duplicate:
+                logger.info(f"Document with hash {file_hash} already exists, replacing...")
+                # Delete existing document
+                if self.delete_existing_document(file_hash):
+                    replacement_mode = True
+                else:
+                    return False, "Failed to replace existing document", {"status": "error"}
+            
+            # Prepare document metadata with file hash
             doc_metadata = self.prepare_document_metadata(
                 source_path=source_path,
                 doc_type="markdown",
                 additional_metadata=metadata
             )
-            doc_metadata["content_hash"] = content_hash
+            doc_metadata["file_hash"] = file_hash
             doc_metadata["content_length"] = len(markdown_content)
+            doc_metadata["upload_timestamp"] = datetime.now().isoformat()
             
             # Chunk the document using markdown-aware chunking
-            logger.info(f"Chunking document: {content_hash}")
+            logger.info(f"Chunking document: {file_hash}")
             chunks = document_chunker.chunk_document(markdown_content, doc_metadata)
             
             if not chunks:
@@ -102,23 +136,22 @@ class DocumentIngestionService:
             if not doc_ids:
                 return False, "Failed to add documents to vector store", {}
             
-            # Mark document as processed
-            self.processed_documents.add(content_hash)
-            
             # Prepare ingestion statistics
             ingestion_stats = {
                 "status": "success",
-                "content_hash": content_hash,
+                "file_hash": file_hash,
                 "total_chunks": len(chunks),
                 "document_ids": doc_ids,
                 "content_length": len(markdown_content),
                 "has_tables": any(chunk.metadata.get("has_table", False) for chunk in chunks),
                 "has_code": any(chunk.metadata.get("has_code", False) for chunk in chunks),
-                "processed_at": datetime.now().isoformat()
+                "processed_at": datetime.now().isoformat(),
+                "replacement_mode": replacement_mode
             }
             
-            success_msg = f"Successfully ingested document with {len(chunks)} chunks"
-            logger.info(f"{success_msg}: {content_hash}")
+            action = "Updated existing" if replacement_mode else "Successfully ingested"
+            success_msg = f"{action} document with {len(chunks)} chunks"
+            logger.info(f"{success_msg}: {file_hash}")
             
             return True, success_msg, ingestion_stats
             
@@ -147,6 +180,7 @@ class DocumentIngestionService:
             # Extract metadata from conversion result
             original_filename = conversion_result.get("original_filename", "unknown")
             conversion_method = conversion_result.get("conversion_method", "unknown")
+            original_file_content = conversion_result.get("original_file_content")
             
             additional_metadata = {
                 "original_filename": original_filename,
@@ -155,11 +189,12 @@ class DocumentIngestionService:
                 "conversion_time": conversion_result.get("conversion_time", 0)
             }
             
-            # Ingest the markdown content
+            # Ingest the markdown content with original file content for proper hashing
             return self.ingest_markdown_content(
                 markdown_content=markdown_content,
                 source_path=original_filename,
-                metadata=additional_metadata
+                metadata=additional_metadata,
+                original_file_content=original_file_content
             )
             
         except Exception as e:
@@ -175,7 +210,7 @@ class DocumentIngestionService:
             Dictionary with system status information
         """
         status = {
-            "processed_documents": len(self.processed_documents),
+            "processed_documents": 0,  # Will be updated from vector store
             "embedding_model_available": False,
             "vector_store_available": False,
             "system_ready": False
@@ -202,10 +237,6 @@ class DocumentIngestionService:
         
         return status
     
-    def clear_processed_documents(self) -> None:
-        """Clear the set of processed documents."""
-        self.processed_documents.clear()
-        logger.info("Cleared processed documents cache")
     
     def test_ingestion_pipeline(self) -> Dict[str, Any]:
         """

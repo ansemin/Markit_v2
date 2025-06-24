@@ -85,7 +85,7 @@ class GeminiFlashParser(DocumentParser):
             
             # Generate the response
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=config.model.gemini_model,
                 contents=[
                     prompt,
                     genai.types.Part.from_bytes(
