@@ -225,6 +225,37 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error searching with metadata filter: {e}")
             return []
+    
+    def clear_all_documents(self) -> bool:
+        """
+        Clear all documents from the vector store collection.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            vector_store = self.get_vector_store()
+            
+            # Get all document IDs first
+            collection = vector_store._collection
+            all_docs = collection.get()
+            
+            if not all_docs or not all_docs.get('ids'):
+                logger.info("No documents found in vector store to clear")
+                return True
+            
+            # Delete all documents using their IDs
+            collection.delete(ids=all_docs['ids'])
+            
+            # Reset the vector store instance to ensure clean state
+            self._vector_store = None
+            
+            logger.info(f"Successfully cleared {len(all_docs['ids'])} documents from vector store")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error clearing all documents: {e}")
+            return False
 
 # Global vector store manager instance
 vector_store_manager = VectorStoreManager()

@@ -15,6 +15,7 @@ from src.core.exceptions import (
 )
 from src.core.logging_config import get_logger
 from src.rag import rag_chat_service, document_ingestion_service
+from src.services.data_clearing_service import data_clearing_service
 
 # Use centralized logging
 logger = get_logger(__name__)
@@ -252,6 +253,48 @@ def start_new_chat_session():
         logger.error(error_msg)
         return [], f"❌ {error_msg}"
 
+def handle_clear_all_data():
+    """Handle clearing all RAG data (vector store + chat history)."""
+    try:
+        # Clear all data using the data clearing service
+        success, message, stats = data_clearing_service.clear_all_data()
+        
+        if success:
+            # Reset chat session after clearing data
+            session_id = rag_chat_service.start_new_session()
+            
+            # Get updated status
+            updated_status = get_chat_status()
+            
+            # Create success message with stats
+            if stats.get("total_cleared_documents", 0) > 0 or stats.get("total_cleared_files", 0) > 0:
+                clear_msg = f"✅ {message}"
+                session_msg = f"🆕 Started new session: {session_id}"
+                combined_msg = f'{clear_msg}<br/><div class="session-info">{session_msg}</div>'
+            else:
+                combined_msg = f'ℹ️ {message}<br/><div class="session-info">🆕 Started new session: {session_id}</div>'
+            
+            logger.info(f"Data cleared successfully: {message}")
+            
+            return [], combined_msg, updated_status
+        else:
+            error_msg = f"❌ {message}"
+            logger.error(f"Data clearing failed: {message}")
+            
+            # Still get updated status even on error
+            updated_status = get_chat_status()
+            
+            return None, f'<div class="session-info">{error_msg}</div>', updated_status
+            
+    except Exception as e:
+        error_msg = f"Error clearing data: {str(e)}"
+        logger.error(error_msg)
+        
+        # Get current status
+        current_status = get_chat_status()
+        
+        return None, f'<div class="session-info">❌ {error_msg}</div>', current_status
+
 def get_chat_status():
     """Get current chat system status."""
     try:
@@ -260,6 +303,9 @@ def get_chat_status():
         
         # Check usage stats
         usage_stats = rag_chat_service.get_usage_stats()
+        
+        # Get data status for additional context
+        data_status = data_clearing_service.get_data_status()
         
         # Modern status card design with better styling
         status_html = f"""
@@ -273,20 +319,20 @@ def get_chat_status():
             
             <div class="status-grid">
                 <div class="status-item">
-                    <div class="status-label">Documents Processed</div>
-                    <div class="status-value">{ingestion_status.get('processed_documents', 0)}</div>
+                    <div class="status-label">Vector Store Docs</div>
+                    <div class="status-value">{data_status.get('vector_store', {}).get('document_count', 0)}</div>
                 </div>
                 <div class="status-item">
-                    <div class="status-label">Vector Store</div>
-                    <div class="status-value">{ingestion_status.get('total_documents_in_store', 0)} docs</div>
+                    <div class="status-label">Chat History Files</div>
+                    <div class="status-value">{data_status.get('chat_history', {}).get('file_count', 0)}</div>
                 </div>
                 <div class="status-item">
                     <div class="status-label">Session Usage</div>
                     <div class="status-value">{usage_stats.get('session_messages', 0)}/{usage_stats.get('session_limit', 50)}</div>
                 </div>
                 <div class="status-item">
-                    <div class="status-label">Hourly Usage</div>
-                    <div class="status-value">{usage_stats.get('hourly_messages', 0)}/{usage_stats.get('hourly_limit', 100)}</div>
+                    <div class="status-label">Environment</div>
+                    <div class="status-value">{'HF Space' if data_status.get('environment') == 'hf_space' else 'Local'}</div>
                 </div>
             </div>
             
@@ -556,6 +602,16 @@ def create_ui():
             transform: translateY(-1px);
         }
         
+        .btn-clear-data {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-clear-data:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+        
         /* Chat interface styling */
         .chat-main-container {
             background: #ffffff;
@@ -819,6 +875,7 @@ def create_ui():
                     with gr.Row(elem_classes=["control-buttons"]):
                         refresh_status_btn = gr.Button("🔄 Refresh Status", elem_classes=["control-btn", "btn-refresh"])
                         new_session_btn = gr.Button("🆕 New Session", elem_classes=["control-btn", "btn-new-session"])
+                        clear_data_btn = gr.Button("🗑️ Clear All Data", elem_classes=["control-btn", "btn-clear-data"], variant="stop")
                     
                     # Main chat interface
                     with gr.Column(elem_classes=["chat-main-container"]):
@@ -884,6 +941,13 @@ def create_ui():
                     fn=get_chat_status,
                     inputs=[],
                     outputs=[status_display]
+                )
+                
+                # Clear all data handler
+                clear_data_btn.click(
+                    fn=handle_clear_all_data,
+                    inputs=[],
+                    outputs=[chatbot, session_info, status_display]
                 )
 
     return demo
