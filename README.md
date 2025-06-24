@@ -159,7 +159,37 @@ The application uses centralized configuration management. You can enhance funct
    
    # For local development (faster startup)
    python run_app.py
+   
+   # For testing with clean data (clears chat history and vector store)
+   python run_app.py --clear-data-and-run
+   
+   # To only clear data without running the app
+   python run_app.py --clear-data
    ```
+
+### 🧹 **Data Management for Testing:**
+For local development and testing, you can easily clear all stored data:
+
+```bash
+# Clear all data and exit (useful for quick cleanup)
+python run_app.py --clear-data
+
+# Clear all data then run the app (useful for fresh testing)
+python run_app.py --clear-data-and-run
+
+# Show all available options
+python run_app.py --help
+```
+
+**What gets cleared:**
+- `data/chat_history/*` - All saved chat sessions
+- `data/vector_store/*` - All document embeddings and vector database
+
+This is particularly useful when:
+- Testing new RAG features with fresh data
+- Clearing old chat sessions and documents
+- Resetting the system to a clean state
+- Debugging document ingestion issues
 
 ### 🧪 **Development Features:**
 - **Automatic Environment Setup**: Dependencies are checked and installed automatically
@@ -175,13 +205,13 @@ The application uses centralized configuration management. You can enhance funct
 
 # Markit: Document to Markdown Converter
 
-[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/Ansemin101/Markit)
+[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/Ansemin101/Markit_v2)
 
 **Author: Anse Min** | [GitHub](https://github.com/ansemin) | [LinkedIn](https://www.linkedin.com/in/ansemin/)
 
 ## Project Links
-- **GitHub Repository**: [github.com/ansemin/Markit_HF](https://github.com/ansemin/Markit_HF)
-- **Hugging Face Space**: [huggingface.co/spaces/Ansemin101/Markit](https://huggingface.co/spaces/Ansemin101/Markit)
+- **GitHub Repository**: [github.com/ansemin/Markit_v2](https://github.com/ansemin/Markit_v2)
+- **Hugging Face Space**: [huggingface.co/spaces/Ansemin101/Markit_v2](https://huggingface.co/spaces/Ansemin101/Markit_v2)
 
 ## Overview
 Markit is a powerful tool that converts various document formats (PDF, DOCX, images, etc.) to Markdown format. It uses different parsing engines and OCR methods to extract text from documents and convert them to clean, readable Markdown formats.

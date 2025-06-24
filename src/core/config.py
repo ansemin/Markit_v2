@@ -104,7 +104,7 @@ class RAGConfig:
     # LLM settings for RAG
     rag_model: str = "gemini-2.5-flash"
     rag_temperature: float = 0.1
-    rag_max_tokens: int = 4096
+    rag_max_tokens: int = 32768
     
     def __post_init__(self):
         """Load RAG configuration from environment variables."""

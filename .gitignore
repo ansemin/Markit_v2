@@ -100,3 +100,6 @@ app_backup.py
 
 # Ignore data folder
 /data/
+
+# Ignore logs 
+==*

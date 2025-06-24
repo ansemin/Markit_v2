@@ -93,10 +93,10 @@ class GeminiFlashParser(DocumentParser):
                     )
                 ],
                 config={
-                    "temperature": 0.1,
+                    "temperature": config.model.temperature,
                     "top_p": 0.95,
                     "top_k": 40,
-                    "max_output_tokens": 8192,
+                    "max_output_tokens": config.model.max_tokens,
                 }
             )
             
