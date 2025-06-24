@@ -36,12 +36,16 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 - **Usage limits** to prevent abuse on public spaces
 - **Powered by Gemini 2.5 Flash** for high-quality responses
 - **OpenAI embeddings** for accurate document retrieval
+- **🗑️ Clear All Data** button for easy data management in both local and HF Space environments
 
 ### User Interface
 - **Dual-tab interface**: Document Converter + Chat
-- **Real-time status monitoring** for RAG system
+- **Real-time status monitoring** for RAG system with environment detection
 - **Auto-ingestion** of converted documents into chat system
-- Clean, responsive UI
+- **Enhanced status display**: Shows vector store document count, chat history files, and environment type
+- **Data management controls**: Clear All Data button with comprehensive feedback
+- **Filename preservation**: Downloaded files maintain original names (e.g., "example data.pdf" → "example data.md")
+- Clean, responsive UI with modern styling
 
 ## Using MarkItDown & Docling
 
@@ -130,7 +134,8 @@ The application uses centralized configuration management. You can enhance funct
 3. Ask questions about your converted documents
 4. Enjoy real-time streaming responses with document context
 5. Use "New Session" to start fresh conversations
-6. Monitor your usage limits in the status panel
+6. Use "🗑️ Clear All Data" to remove all documents and chat history
+7. Monitor your usage limits in the status panel
 
 ## Local Development
 
@@ -190,6 +195,23 @@ This is particularly useful when:
 - Clearing old chat sessions and documents
 - Resetting the system to a clean state
 - Debugging document ingestion issues
+
+### 🗑️ **In-App Data Clearing:**
+In addition to command-line data clearing, you can also clear data directly from the web interface:
+
+1. Go to the **"Chat with Documents"** tab
+2. Click the **"🗑️ Clear All Data"** button in the control panel
+3. All vector store documents and chat history will be cleared
+4. A new chat session will automatically start
+5. The status panel will update to reflect the cleared state
+
+**Features of in-app clearing:**
+- **Environment Detection**: Automatically works in both local and HF Space environments
+- **Comprehensive Clearing**: Removes both vector store documents and chat history files
+- **Smart Path Resolution**: Uses `/tmp/data/*` for HF Spaces, `./data/*` for local development
+- **User Feedback**: Shows detailed results of what was cleared
+- **Auto-Session Reset**: Starts fresh chat session after clearing
+- **Safe Operation**: Handles errors gracefully and provides status updates
 
 ### 🧪 **Development Features:**
 - **Automatic Environment Setup**: Dependencies are checked and installed automatically
@@ -418,7 +440,8 @@ markit_v2/
 │   │   └── latex_to_markdown_converter.py # LaTeX conversion utility
 │   ├── services/           # Business logic layer
 │   │   ├── __init__.py     # Package initialization
-│   │   └── document_service.py # 🆕 Document processing service
+│   │   ├── document_service.py # 🆕 Document processing service
+│   │   └── data_clearing_service.py # 🆕 Data management and clearing service
 │   ├── parsers/            # Parser implementations
 │   │   ├── __init__.py     # Package initialization
 │   │   ├── parser_interface.py # Enhanced parser interface
@@ -449,6 +472,7 @@ markit_v2/
 - **Configuration Management**: Centralized API keys, model settings, and app configuration (`src/core/config.py`)
 - **Exception Hierarchy**: Proper error handling with specific exception types (`src/core/exceptions.py`)
 - **Service Layer**: Business logic separated from UI and core utilities (`src/services/document_service.py`)
+- **Data Management Service**: Comprehensive data clearing functionality (`src/services/data_clearing_service.py`)
 - **Environment Management**: Automated dependency checking and setup (`src/core/environment.py`)
 - **Enhanced Parser Interface**: Validation, metadata, and cancellation support
 - **Lightweight Launcher**: Quick development startup with `run_app.py`
@@ -458,12 +482,21 @@ markit_v2/
 ### 🧠 **RAG System Architecture:**
 - **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
 - **Markdown-Aware Chunking** (`src/rag/chunking.py`): Preserves tables and code blocks as whole units
-- **Vector Store** (`src/rag/vector_store.py`): Chroma database with persistent storage
+- **Vector Store** (`src/rag/vector_store.py`): Chroma database with persistent storage and deduplication
 - **Chat Memory** (`src/rag/memory.py`): Session management and conversation history
 - **Chat Service** (`src/rag/chat_service.py`): Streaming RAG responses with Gemini 2.5 Flash
-- **Document Ingestion** (`src/rag/ingestion.py`): Automated pipeline for converting documents to RAG-ready format
+- **Document Ingestion** (`src/rag/ingestion.py`): Automated pipeline with intelligent duplicate handling
 - **Usage Limiting**: Anti-abuse measures for public deployment
 - **Auto-Ingestion**: Seamless integration with document conversion workflow
+
+### 🗑️ **Data Management & Deduplication:**
+- **File Hash-Based Deduplication**: Uses SHA-256 hashes of original file content to prevent duplicates
+- **Chroma Where Filter Integration**: Persistent duplicate detection using vector store metadata queries
+- **Automatic Document Replacement**: When same file is uploaded again, old version is replaced with new one
+- **Cross-Environment Data Clearing**: Works seamlessly in both local development and HF Space environments
+- **Environment-Aware Path Resolution**: Automatically detects and uses correct data paths (`./data/*` vs `/tmp/data/*`)
+- **Comprehensive Status Reporting**: Real-time display of vector store documents, chat history files, and environment type
+- **Safe Clearing Operations**: Graceful error handling with detailed feedback on clearing operations
 
 ### ZeroGPU Integration Notes
 
