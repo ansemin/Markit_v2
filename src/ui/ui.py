@@ -191,7 +191,7 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
 def handle_chat_message(message, history):
     """Handle a new chat message with streaming response."""
     if not message or not message.strip():
-        return "", history
+        return "", history, gr.update()
     
     try:
         # Add user message to history
@@ -207,9 +207,15 @@ def handle_chat_message(message, history):
             response_text += chunk
             # Update the last message in history with the current response
             history[-1]["content"] = response_text
-            yield "", history
+            # Update status in real-time during streaming
+            updated_status = get_chat_status()
+            yield "", history, updated_status
         
         logger.info(f"Chat response completed for message: {message[:50]}...")
+        
+        # Final status update after message completion
+        final_status = get_chat_status()
+        yield "", history, final_status
         
     except Exception as e:
         error_msg = f"Error generating response: {str(e)}"
@@ -221,7 +227,9 @@ def handle_chat_message(message, history):
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": f"❌ {error_msg}"}
             ]
-        yield "", history
+        # Update status even on error
+        error_status = get_chat_status()
+        yield "", history, error_status
 
 def start_new_chat_session():
     """Start a new chat session."""
@@ -455,18 +463,31 @@ def create_ui():
             font-weight: 500;
             flex: 1;
             min-width: 200px;
+            color: #2c3e50 !important;
+        }
+        
+        .service-status span {
+            color: #2c3e50 !important;
         }
         
         .service-ready {
             background: #d4edda;
-            color: #155724;
+            color: #2c3e50 !important;
             border: 1px solid #c3e6cb;
+        }
+        
+        .service-ready span {
+            color: #2c3e50 !important;
         }
         
         .service-error {
             background: #f8d7da;
-            color: #721c24;
+            color: #2c3e50 !important;
             border: 1px solid #f5c6cb;
+        }
+        
+        .service-error span {
+            color: #2c3e50 !important;
         }
         
         .service-icon {
@@ -826,25 +847,26 @@ def create_ui():
                 msg_input.submit(
                     fn=handle_chat_message,
                     inputs=[msg_input, chatbot],
-                    outputs=[msg_input, chatbot]
+                    outputs=[msg_input, chatbot, status_display]
                 )
                 
                 send_btn.click(
                     fn=handle_chat_message,
                     inputs=[msg_input, chatbot],
-                    outputs=[msg_input, chatbot]
+                    outputs=[msg_input, chatbot, status_display]
                 )
                 
                 # New session handler with improved feedback
                 def enhanced_new_session():
                     history, info = start_new_chat_session()
                     session_html = f'<div class="session-info">{info}</div>'
-                    return history, session_html
+                    updated_status = get_chat_status()
+                    return history, session_html, updated_status
                 
                 new_session_btn.click(
                     fn=enhanced_new_session,
                     inputs=[],
-                    outputs=[chatbot, session_info]
+                    outputs=[chatbot, session_info, status_display]
                 )
                 
                 # Refresh status handler

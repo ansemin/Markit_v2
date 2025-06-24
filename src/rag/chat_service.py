@@ -119,8 +119,8 @@ class RAGChatService:
                 self._llm = ChatGoogleGenerativeAI(
                     model="gemini-2.5-flash",  # Latest Gemini model
                     google_api_key=google_api_key,
-                    temperature=0.1,
-                    max_tokens=4096,
+                    temperature=config.rag.rag_temperature,
+                    max_tokens=config.rag.rag_max_tokens,
                     disable_streaming=False  # Enable streaming (new parameter name)
                 )
                 
@@ -144,15 +144,16 @@ class RAGChatService:
                 
                 # Create a prompt template for RAG
                 prompt_template = ChatPromptTemplate.from_template("""
-You are a helpful assistant that answers questions based on the provided document context.
+You are a helpful assistant that can chat naturally while specializing in answering questions about uploaded documents.
 
 Instructions:
-1. Use the context provided to answer the user's question
-2. If the information is not in the context, say "I don't have enough information in the provided documents to answer that question"
-3. Always cite which parts of the documents you used for your answer
-4. Be concise but comprehensive
-5. If you find relevant tables or code blocks, include them in your response
-6. Maintain a conversational tone
+1. For document-related questions: Use the provided context to give comprehensive answers and always cite your sources
+2. For conversational interactions (greetings, introductions, clarifications, follow-ups): Respond naturally and helpfully
+3. For questions about topics not covered in the documents: Politely explain that you specialize in the uploaded documents but can still have a conversation
+4. When using document information, always cite which parts of the documents you referenced
+5. Include relevant tables and code blocks when they help answer the question
+6. Be conversational, friendly, and helpful
+7. Remember information shared in our conversation (like names, preferences, etc.)
 
 Context from documents:
 {context}
@@ -160,7 +161,7 @@ Context from documents:
 Chat History:
 {chat_history}
 
-User Question: {question}
+User Message: {question}
 """)
                 
                 def format_docs(docs: List[Document]) -> str:

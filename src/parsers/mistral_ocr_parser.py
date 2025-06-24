@@ -256,6 +256,8 @@ class MistralOcrParser(DocumentParser):
                     # Send to chat completion API with document understanding prompt
                     chat_response = client.chat.complete(
                         model="mistral-large-latest",
+                        max_tokens=config.model.max_tokens,
+                        temperature=config.model.temperature,
                         messages=[
                             {
                                 "role": "user",
@@ -290,6 +292,8 @@ class MistralOcrParser(DocumentParser):
                 # Use the chat API with the image for document understanding
                 chat_response = client.chat.complete(
                     model="mistral-large-latest",
+                    max_tokens=config.model.max_tokens,
+                    temperature=config.model.temperature,
                     messages=[
                         {
                             "role": "user",
