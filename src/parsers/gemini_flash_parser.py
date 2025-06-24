@@ -9,6 +9,7 @@ import io
 
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
+from src.core.config import config
 
 # Import the Google Gemini API client
 try:
