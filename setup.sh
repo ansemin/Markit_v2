@@ -14,7 +14,8 @@ if [ "$EUID" -eq 0 ]; then
     echo "Installing system dependencies..."
     apt-get update && apt-get install -y \
         wget \
-        pkg-config
+        pkg-config \
+        ffmpeg
     echo "System dependencies installed successfully"
 else
     echo "Not running as root. Skipping system dependencies installation."
@@ -55,6 +56,17 @@ echo "MarkItDown installed successfully"
 echo "Installing Docling..."
 pip install -q -U docling
 echo "Docling installed successfully"
+
+# Install LangChain and RAG dependencies
+echo "Installing LangChain and RAG dependencies..."
+pip install -q -U langchain>=0.3.0
+pip install -q -U langchain-openai>=0.2.0
+pip install -q -U langchain-google-genai>=2.0.0
+pip install -q -U langchain-chroma>=0.1.0
+pip install -q -U langchain-text-splitters>=0.3.0
+pip install -q -U chromadb>=0.5.0
+pip install -q -U sentence-transformers>=3.0.0
+echo "LangChain and RAG dependencies installed successfully"
 
 # Install the project in development mode only if setup.py or pyproject.toml exists
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then

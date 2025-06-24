@@ -154,6 +154,64 @@ class EnvironmentManager:
                 print(f"Error installing Docling: {e}")
                 return False
     
+    def check_rag_dependencies(self) -> bool:
+        """Check and install RAG dependencies (LangChain, ChromaDB, etc.)."""
+        rag_packages = [
+            ("langchain", "langchain>=0.3.0"),
+            ("langchain_openai", "langchain-openai>=0.2.0"),
+            ("langchain_google_genai", "langchain-google-genai>=2.0.0"),
+            ("langchain_chroma", "langchain-chroma>=0.1.0"),
+            ("langchain_text_splitters", "langchain-text-splitters>=0.3.0"),
+            ("chromadb", "chromadb>=0.5.0"),
+            ("sentence_transformers", "sentence-transformers>=3.0.0")
+        ]
+        
+        all_installed = True
+        
+        for import_name, install_name in rag_packages:
+            try:
+                if import_name == "langchain_openai":
+                    from langchain_openai import OpenAIEmbeddings
+                elif import_name == "langchain_google_genai":
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                elif import_name == "langchain_chroma":
+                    from langchain_chroma import Chroma
+                elif import_name == "langchain_text_splitters":
+                    from langchain_text_splitters import RecursiveCharacterTextSplitter
+                else:
+                    __import__(import_name)
+                
+                print(f"✅ {import_name} is installed")
+                
+            except ImportError:
+                print(f"WARNING: {import_name} not installed. Installing {install_name}...")
+                try:
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-q", install_name], check=False)
+                    # Verify installation
+                    if import_name == "langchain_openai":
+                        from langchain_openai import OpenAIEmbeddings
+                    elif import_name == "langchain_google_genai":
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                    elif import_name == "langchain_chroma":
+                        from langchain_chroma import Chroma
+                    elif import_name == "langchain_text_splitters":
+                        from langchain_text_splitters import RecursiveCharacterTextSplitter
+                    else:
+                        __import__(import_name)
+                    
+                    print(f"✅ {import_name} installed successfully")
+                    
+                except (ImportError, Exception) as e:
+                    print(f"❌ Failed to install {import_name}: {e}")
+                    all_installed = False
+        
+        if all_installed:
+            print("✅ All RAG dependencies are available")
+        else:
+            print("⚠️ Some RAG dependencies failed to install - chat functionality may be limited")
+        
+        return all_installed
+    
     def load_environment_variables(self) -> bool:
         """Load environment variables from .env file."""
         try:
@@ -236,6 +294,7 @@ class EnvironmentManager:
         results["numpy"] = self.check_numpy()
         results["markitdown"] = self.check_markitdown()
         results["docling"] = self.check_docling()
+        results["rag_dependencies"] = self.check_rag_dependencies()
         
         # Load environment variables
         results["env_vars"] = self.load_environment_variables()

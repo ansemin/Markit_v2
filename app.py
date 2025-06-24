@@ -46,6 +46,24 @@ except ImportError as e:
     except ImportError:
         print("Installing Docling...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "docling"], check=False)
+    
+    # Check RAG dependencies as fallback
+    try:
+        from langchain_openai import OpenAIEmbeddings
+        print("RAG dependencies are available")
+    except ImportError:
+        print("Installing RAG dependencies...")
+        rag_packages = [
+            "langchain>=0.3.0",
+            "langchain-openai>=0.2.0", 
+            "langchain-google-genai>=2.0.0",
+            "langchain-chroma>=0.1.0",
+            "langchain-text-splitters>=0.3.0",
+            "chromadb>=0.5.0",
+            "sentence-transformers>=3.0.0"
+        ]
+        for package in rag_packages:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", package], check=False)
 
 # Import main function with fallback strategies (HF Spaces compatibility)
 try:
