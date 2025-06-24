@@ -118,8 +118,8 @@ class DocumentService:
         
         return content
     
-    def _create_output_file(self, content: str, output_format: str) -> str:
-        """Create output file with proper extension."""
+    def _create_output_file(self, content: str, output_format: str, original_file_path: Optional[str] = None) -> str:
+        """Create output file with proper extension and preserved filename."""
         # Determine file extension
         format_extensions = {
             "markdown": ".md",
@@ -132,18 +132,47 @@ class DocumentService:
         if self._check_cancellation():
             raise ConversionError("Conversion cancelled before output file creation")
         
-        # Create temporary output file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False, encoding="utf-8") as tmp:
-            tmp_path = tmp.name
+        # Create output filename based on original filename if provided
+        if original_file_path:
+            original_name = Path(original_file_path).stem  # Get filename without extension
+            # Clean the filename to be filesystem-safe while preserving spaces and common characters
+            clean_name = "".join(c for c in original_name if c.isalnum() or c in (' ', '-', '_', '.', '(', ')')).strip()
+            # Replace multiple spaces with single spaces
+            clean_name = ' '.join(clean_name.split())
+            if not clean_name:  # Fallback if cleaning removes everything
+                clean_name = "converted_document"
             
-            # Write in chunks with cancellation checks
-            chunk_size = 10000  # characters
-            for i in range(0, len(content), chunk_size):
-                if self._check_cancellation():
-                    self._safe_delete_file(tmp_path)
-                    raise ConversionError("Conversion cancelled during output file writing")
-                
-                tmp.write(content[i:i+chunk_size])
+            # Create output file in temp directory with proper name
+            temp_dir = tempfile.gettempdir()
+            output_filename = f"{clean_name}{ext}"
+            tmp_path = os.path.join(temp_dir, output_filename)
+            
+            # Handle filename conflicts by adding a number suffix
+            counter = 1
+            base_path = tmp_path
+            while os.path.exists(tmp_path):
+                name_part = f"{clean_name}_{counter}"
+                tmp_path = os.path.join(temp_dir, f"{name_part}{ext}")
+                counter += 1
+        else:
+            # Fallback to random temporary file
+            with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False, encoding="utf-8") as tmp:
+                tmp_path = tmp.name
+        
+        # Write content to file
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                # Write in chunks with cancellation checks
+                chunk_size = 10000  # characters
+                for i in range(0, len(content), chunk_size):
+                    if self._check_cancellation():
+                        self._safe_delete_file(tmp_path)
+                        raise ConversionError("Conversion cancelled during output file writing")
+                    
+                    f.write(content[i:i+chunk_size])
+        except Exception as e:
+            self._safe_delete_file(tmp_path)
+            raise ConversionError(f"Failed to write output file: {str(e)}")
         
         return tmp_path
     
@@ -218,7 +247,7 @@ class DocumentService:
                 raise ConversionError("Conversion cancelled")
             
             # Create output file
-            output_path = self._create_output_file(content, output_format)
+            output_path = self._create_output_file(content, output_format, file_path)
             
             return content, output_path
             
