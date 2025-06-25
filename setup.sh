@@ -64,8 +64,10 @@ pip install -q -U langchain-openai>=0.2.0
 pip install -q -U langchain-google-genai>=2.0.0
 pip install -q -U langchain-chroma>=0.1.0
 pip install -q -U langchain-text-splitters>=0.3.0
+pip install -q -U langchain-community>=0.3.0  # For BM25Retriever and EnsembleRetriever
 pip install -q -U chromadb>=0.5.0
 pip install -q -U sentence-transformers>=3.0.0
+pip install -q -U rank-bm25>=0.2.0  # Required for BM25Retriever
 echo "LangChain and RAG dependencies installed successfully"
 
 # Install the project in development mode only if setup.py or pyproject.toml exists

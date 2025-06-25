@@ -36,6 +36,11 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 
 ### 🤖 RAG Chat with Documents
 - **Chat with your converted documents** using advanced AI
+- **🆕 Advanced Retrieval Strategies**: Multiple search methods for optimal results
+  - **Similarity Search**: Traditional semantic similarity using embeddings
+  - **MMR (Maximal Marginal Relevance)**: Diverse results with reduced redundancy
+  - **BM25 Keyword Search**: Traditional keyword-based retrieval
+  - **Hybrid Search**: Combines semantic + keyword search for best accuracy
 - **Intelligent document retrieval** using vector embeddings
 - **Markdown-aware chunking** that preserves tables and code blocks
 - **Streaming chat responses** for real-time interaction
@@ -160,6 +165,15 @@ The application uses centralized configuration management. You can enhance funct
 - `RAG_TEMPERATURE`: Temperature for RAG responses (default: 0.1)
 - `RAG_MAX_TOKENS`: Max tokens for RAG responses (default: 4096)
 
+### 🔍 **Advanced Retrieval Configuration:**
+- `DEFAULT_RETRIEVAL_METHOD`: Default retrieval strategy (default: similarity)
+- `MMR_LAMBDA_MULT`: MMR diversity parameter (default: 0.5)
+- `MMR_FETCH_K`: MMR candidate document count (default: 10)
+- `HYBRID_SEMANTIC_WEIGHT`: Semantic search weight in hybrid mode (default: 0.7)
+- `HYBRID_KEYWORD_WEIGHT`: Keyword search weight in hybrid mode (default: 0.3)
+- `BM25_K1`: BM25 term frequency saturation parameter (default: 1.2)
+- `BM25_B`: BM25 field length normalization parameter (default: 0.75)
+
 ## Usage
 
 ### Document Conversion
@@ -204,11 +218,21 @@ The application uses centralized configuration management. You can enhance funct
 ### 🤖 Chat with Documents
 1. Go to the **"Chat with Documents"** tab
 2. Check the system status to ensure RAG components are ready
-3. Ask questions about your converted documents
-4. Enjoy real-time streaming responses with document context
-5. Use "New Session" to start fresh conversations
-6. Use "🗑️ Clear All Data" to remove all documents and chat history
-7. Monitor your usage limits in the status panel
+3. **🆕 Choose your retrieval strategy** for optimal results:
+   - **Similarity**: Best for general semantic search
+   - **MMR**: Best for diverse, non-repetitive results
+   - **Hybrid**: Best overall accuracy (recommended)
+4. Ask questions about your converted documents
+5. Enjoy real-time streaming responses with document context
+6. Use "New Session" to start fresh conversations
+7. Use "🗑️ Clear All Data" to remove all documents and chat history
+8. Monitor your usage limits in the status panel
+
+#### 🔍 **Retrieval Strategy Guide:**
+- **For research papers**: Use MMR to get diverse perspectives
+- **For technical docs**: Use Hybrid for comprehensive coverage
+- **For specific facts**: Use Similarity for targeted results
+- **For broad topics**: Use Hybrid for balanced semantic + keyword matching
 
 ## Local Development
 
@@ -283,6 +307,66 @@ The application uses centralized configuration management. You can enhance funct
 - [Hugging Face Space](https://huggingface.co/spaces/Ansemin101/Markit_v2)
 
 
+## 🔍 Advanced RAG Retrieval Strategies
+
+The system supports **four different retrieval methods** for optimal document search and question answering:
+
+### **1. 🎯 Similarity Search (Default)**
+- **How it works**: Semantic similarity using OpenAI embeddings
+- **Best for**: General questions and semantic understanding
+- **Use case**: "What is the main topic of this document?"
+- **Configuration**: `{'k': 4, 'search_type': 'similarity'}`
+
+### **2. 🔀 MMR (Maximal Marginal Relevance)**  
+- **How it works**: Balances relevance with result diversity to reduce redundancy
+- **Best for**: Research questions requiring diverse perspectives
+- **Use case**: "What are different approaches to transformer architecture?"
+- **Configuration**: `{'k': 4, 'fetch_k': 10, 'lambda_mult': 0.5}`
+- **Benefits**: Prevents repetitive results, ensures comprehensive coverage
+
+### **3. 🔍 BM25 Keyword Search**
+- **How it works**: Traditional keyword-based search with TF-IDF scoring
+- **Best for**: Exact term matching and specific factual queries
+- **Use case**: "Find mentions of 'attention mechanism' in the documents"
+- **Configuration**: `{'k': 4}`
+- **Benefits**: Excellent for technical terms and specific concepts
+
+### **4. 🔗 Hybrid Search (Recommended)**
+- **How it works**: Combines semantic embeddings + keyword search using ensemble weighting
+- **Best for**: Most queries - provides best overall accuracy
+- **Use case**: Any complex question benefiting from both semantic and keyword matching
+- **Configuration**: `{'k': 4, 'semantic_weight': 0.7, 'keyword_weight': 0.3}`
+- **Benefits**: **87.5% hit rate vs 79.2% for similarity-only** (based on LangChain research)
+
+### **🎯 Performance Comparison:**
+| Method | Accuracy | Diversity | Speed | Best Use Case |
+|--------|----------|-----------|-------|---------------|
+| Similarity | Good | Low | Fast | General semantic questions |
+| MMR | Good | High | Medium | Research requiring diverse viewpoints |
+| BM25 | Medium | Medium | Fast | Exact term/keyword searches |
+| **Hybrid** | **Excellent** | **High** | **Medium** | **Most questions (recommended)** |
+
+### **💡 Usage Examples:**
+
+```python
+# In your application code
+from src.rag.chat_service import rag_chat_service
+
+# Use hybrid search (recommended)
+response = rag_chat_service.chat_with_retrieval(
+    "How does attention work in transformers?",
+    retrieval_method="hybrid",
+    retrieval_config={'k': 4, 'semantic_weight': 0.8, 'keyword_weight': 0.2}
+)
+
+# Use MMR for diverse research results
+response = rag_chat_service.chat_with_retrieval(
+    "What are different transformer architectures?", 
+    retrieval_method="mmr",
+    retrieval_config={'k': 3, 'fetch_k': 10, 'lambda_mult': 0.6}
+)
+```
+
 ## Development Guide
 
 ### Project Structure
@@ -336,8 +420,12 @@ markit_v2/
 │       └── ui.py           # Gradio UI with dual tabs (Converter + Chat)
 ├── documents/              # Documentation and examples (gitignored)
 ├── tessdata/               # Tesseract OCR data (gitignored)
-└── tests/                  # Tests (future)
-    └── __init__.py         # Package initialization
+└── tests/                  # 🆕 Test suite for Phase 1 RAG implementation
+    ├── __init__.py         # Package initialization
+    ├── README.md           # Test documentation and usage guide
+    ├── test_implementation_structure.py # Structure validation (no API keys)
+    ├── test_retrieval_methods.py # Full functionality testing
+    └── test_data_usage.py  # Data usage demonstration
 ```
 
 ### 🆕 **New Architecture Components:**
@@ -354,9 +442,14 @@ markit_v2/
 ### 🧠 **RAG System Architecture:**
 - **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
 - **Markdown-Aware Chunking** (`src/rag/chunking.py`): Preserves tables and code blocks as whole units
-- **Vector Store** (`src/rag/vector_store.py`): Chroma database with persistent storage and deduplication
+- **🆕 Advanced Vector Store** (`src/rag/vector_store.py`): Multi-strategy retrieval system with:
+  - **Similarity Search**: Traditional semantic retrieval using embeddings
+  - **MMR Support**: Maximal Marginal Relevance for diverse results
+  - **BM25 Integration**: Keyword-based search with TF-IDF scoring
+  - **Hybrid Retrieval**: Ensemble combining semantic + keyword methods
+  - **Chroma database**: Persistent storage with deduplication
 - **Chat Memory** (`src/rag/memory.py`): Session management and conversation history
-- **Chat Service** (`src/rag/chat_service.py`): Streaming RAG responses with Gemini 2.5 Flash
+- **🆕 Enhanced Chat Service** (`src/rag/chat_service.py`): Multi-method RAG with Gemini 2.5 Flash
 - **Document Ingestion** (`src/rag/ingestion.py`): Automated pipeline with intelligent duplicate handling
 - **Usage Limiting**: Anti-abuse measures for public deployment
 - **Auto-Ingestion**: Seamless integration with document conversion workflow

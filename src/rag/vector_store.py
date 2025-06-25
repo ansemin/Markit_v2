@@ -6,6 +6,8 @@ from pathlib import Path
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStoreRetriever
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 from src.rag.embeddings import embedding_manager
 from src.core.config import config
 from src.core.logging_config import get_logger
@@ -35,6 +37,8 @@ class VectorStoreManager:
         os.makedirs(self.persist_directory, exist_ok=True)
         
         self._vector_store: Optional[Chroma] = None
+        self._documents_cache: List[Document] = []  # Cache documents for BM25 retriever
+        self._bm25_retriever: Optional[BM25Retriever] = None
         
         logger.info(f"VectorStoreManager initialized with persist_directory={self.persist_directory}")
     
@@ -81,6 +85,11 @@ class VectorStoreManager:
             
             # Add documents to the vector store
             added_ids = vector_store.add_documents(documents=documents, ids=doc_ids)
+            
+            # Update documents cache for BM25 retriever
+            self._documents_cache.extend(documents)
+            # Reset BM25 retriever to force rebuild with new documents
+            self._bm25_retriever = None
             
             logger.info(f"Added {len(added_ids)} documents to vector store")
             return added_ids
@@ -150,6 +159,111 @@ class VectorStoreManager:
             
         except Exception as e:
             logger.error(f"Error creating retriever: {e}")
+            raise
+    
+    def get_bm25_retriever(self, k: int = 4) -> BM25Retriever:
+        """
+        Get or create a BM25 retriever for keyword-based search.
+        
+        Args:
+            k: Number of documents to return
+            
+        Returns:
+            BM25Retriever object
+        """
+        try:
+            if self._bm25_retriever is None or not self._documents_cache:
+                if not self._documents_cache:
+                    # Try to load documents from the vector store
+                    vector_store = self.get_vector_store()
+                    collection = vector_store._collection
+                    all_docs = collection.get()
+                    
+                    if all_docs and all_docs.get('documents') and all_docs.get('metadatas'):
+                        # Reconstruct documents from vector store
+                        self._documents_cache = [
+                            Document(page_content=content, metadata=metadata)
+                            for content, metadata in zip(all_docs['documents'], all_docs['metadatas'])
+                        ]
+                
+                if self._documents_cache:
+                    self._bm25_retriever = BM25Retriever.from_documents(
+                        documents=self._documents_cache,
+                        k=k
+                    )
+                    logger.info(f"Created BM25 retriever with {len(self._documents_cache)} documents")
+                else:
+                    logger.warning("No documents available for BM25 retriever")
+                    # Create empty retriever
+                    self._bm25_retriever = BM25Retriever.from_documents(
+                        documents=[Document(page_content="", metadata={})],
+                        k=k
+                    )
+            
+            # Update k if different
+            if hasattr(self._bm25_retriever, 'k'):
+                self._bm25_retriever.k = k
+            
+            return self._bm25_retriever
+            
+        except Exception as e:
+            logger.error(f"Error creating BM25 retriever: {e}")
+            raise
+    
+    def get_hybrid_retriever(self, 
+                           k: int = 4, 
+                           semantic_weight: float = 0.7, 
+                           keyword_weight: float = 0.3,
+                           search_type: str = "similarity",
+                           search_kwargs: Optional[Dict[str, Any]] = None) -> EnsembleRetriever:
+        """
+        Get a hybrid retriever that combines semantic (vector) and keyword (BM25) search.
+        
+        Args:
+            k: Number of documents to return
+            semantic_weight: Weight for semantic search (0.0 to 1.0)
+            keyword_weight: Weight for keyword search (0.0 to 1.0)
+            search_type: Type of semantic search ("similarity", "mmr", "similarity_score_threshold")
+            search_kwargs: Additional search parameters for semantic retriever
+            
+        Returns:
+            EnsembleRetriever object combining both approaches
+        """
+        try:
+            # Normalize weights
+            total_weight = semantic_weight + keyword_weight
+            if total_weight == 0:
+                semantic_weight, keyword_weight = 0.7, 0.3
+            else:
+                semantic_weight = semantic_weight / total_weight
+                keyword_weight = keyword_weight / total_weight
+            
+            # Get semantic retriever
+            if search_kwargs is None:
+                search_kwargs = {"k": k}
+            else:
+                search_kwargs = search_kwargs.copy()
+                search_kwargs["k"] = k
+            
+            semantic_retriever = self.get_retriever(
+                search_type=search_type,
+                search_kwargs=search_kwargs
+            )
+            
+            # Get BM25 retriever
+            keyword_retriever = self.get_bm25_retriever(k=k)
+            
+            # Create ensemble retriever
+            ensemble_retriever = EnsembleRetriever(
+                retrievers=[semantic_retriever, keyword_retriever],
+                weights=[semantic_weight, keyword_weight]
+            )
+            
+            logger.info(f"Created hybrid retriever with weights: semantic={semantic_weight:.2f}, keyword={keyword_weight:.2f}")
+            return ensemble_retriever
+            
+        except Exception as e:
+            logger.error(f"Error creating hybrid retriever: {e}")
             raise
     
     def get_collection_info(self) -> Dict[str, Any]:
@@ -249,6 +363,10 @@ class VectorStoreManager:
             
             # Reset the vector store instance to ensure clean state
             self._vector_store = None
+            
+            # Clear documents cache and BM25 retriever
+            self._documents_cache.clear()
+            self._bm25_retriever = None
             
             logger.info(f"Successfully cleared {len(all_docs['ids'])} documents from vector store")
             return True
