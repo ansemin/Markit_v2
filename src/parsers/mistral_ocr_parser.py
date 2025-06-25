@@ -357,8 +357,6 @@ class MistralOcrParser(DocumentParser):
         
         return markdown
     
- 
-    
     def _validate_batch_files(self, file_paths: List[Path]) -> None:
         """Validate batch of files for multi-document processing."""
         if len(file_paths) == 0:

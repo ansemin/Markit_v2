@@ -244,11 +244,11 @@ class DoclingParser(DocumentParser):
     def _format_batch_output(self, response_text: str, file_paths: List[Path], processing_type: str, original_filenames: Optional[List[str]] = None) -> str:
         names = original_filenames if original_filenames else [p.name for p in file_paths]
         header = (
-            f"<!-- Multi-Document Processing Results -->\n"
-            f"<!-- Processing Type: {processing_type} -->\n"
-            f"<!-- Files Processed: {len(file_paths)} -->\n"
-            f"<!-- File Names: {', '.join(names)} -->\n\n"
-        )
+             f"<!-- Multi-Document Processing Results -->\n"
+             f"<!-- Processing Type: {processing_type} -->\n"
+             f"<!-- Files Processed: {len(file_paths)} -->\n"
+             f"<!-- File Names: {', '.join(names)} -->\n\n"
+         )
         # Ensure response_text is a string to avoid TypeError when it is None
         safe_resp = "" if response_text is None else str(response_text)
         return header + safe_resp
@@ -322,7 +322,7 @@ class DoclingParser(DocumentParser):
             client = genai.Client(api_key=config.api.google_api_key)
             response = client.models.generate_content(
                 model=config.model.gemini_model,
-                contents=[prompt, combined_md],
+                contents=[prompt + "\n\n" + combined_md],
                 config={
                     "temperature": config.model.temperature,
                     "top_p": 0.95,
@@ -330,10 +330,34 @@ class DoclingParser(DocumentParser):
                     "max_output_tokens": config.model.max_tokens,
                 },
             )
-            final_text = response.text if hasattr(response, "text") else None
-            if final_text is None:
+            
+            # Debug logging for response structure
+            logger.debug(f"Gemini response type: {type(response)}")
+            logger.debug(f"Gemini response attributes: {dir(response)}")
+            
+            # Try different ways to extract text from response
+            final_text = None
+            if hasattr(response, "text") and response.text:
+                final_text = response.text
+            elif hasattr(response, "candidates") and response.candidates:
+                # Try to get text from first candidate
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and candidate.content:
+                    if hasattr(candidate.content, "parts") and candidate.content.parts:
+                        final_text = candidate.content.parts[0].text
+                    elif hasattr(candidate.content, "text"):
+                        final_text = candidate.content.text
+                elif hasattr(candidate, "text"):
+                    final_text = candidate.text
+            elif hasattr(response, "content") and response.content:
+                final_text = str(response.content)
+            
+            if not final_text:
+                logger.error(f"No text found in Gemini response. Response: {response}")
                 raise DocumentProcessingError("Gemini post-processing returned no text")
+                
         except Exception as e:
+            logger.error(f"Gemini API error: {str(e)}")
             raise DocumentProcessingError(f"Gemini post-processing failed: {str(e)}")
 
         return self._format_batch_output(final_text, paths, processing_type, original_filenames)
