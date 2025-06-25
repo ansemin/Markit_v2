@@ -50,8 +50,19 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 - **OpenAI embeddings** for accurate document retrieval
 - **🗑️ Clear All Data** button for easy data management in both local and HF Space environments
 
+### 🔍 Query Ranker (NEW!)
+- **🆕 Third dedicated tab** for document search and ranking
+- **Interactive query search** with real-time document chunk ranking
+- **Multiple retrieval methods**: Similarity, MMR, BM25, and Hybrid search
+- **Intelligent confidence scoring**: Rank-based confidence levels (High/Medium/Low)
+- **Real similarity scores**: Actual ChromaDB similarity scores for similarity search
+- **Transparent results**: Clear display of source documents, page numbers, and chunk lengths
+- **Adjustable result count**: 1-10 results with responsive slider control
+- **Method comparison**: Test different retrieval strategies on the same query
+- **Modern card-based UI**: Clean, professional result display with hover effects
+
 ### User Interface
-- **Dual-tab interface**: Document Converter + Chat
+- **🆕 Three-tab interface**: Document Converter + Chat + Query Ranker
 - **🆕 Unified File Input**: Single interface handles both single and multiple file uploads
 - **🆕 Dynamic Processing Options**: Multi-document processing type selector appears automatically
 - **🆕 Real-time Validation**: Live feedback on file count, size limits, and processing mode
@@ -61,6 +72,7 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 - **Data management controls**: Clear All Data button with comprehensive feedback
 - **Filename preservation**: Downloaded files maintain original names (e.g., "example data.pdf" → "example data.md")
 - **🆕 Smart Output Naming**: Batch processing creates descriptive filenames (e.g., "Combined_3_Documents_20240125.md")
+- **🆕 Consistent modern styling**: All tabs share the same professional design theme
 - Clean, responsive UI with modern styling
 
 ## Supported Libraries
@@ -228,11 +240,26 @@ The application uses centralized configuration management. You can enhance funct
 7. Use "🗑️ Clear All Data" to remove all documents and chat history
 8. Monitor your usage limits in the status panel
 
+### 🔍 Query Ranker (NEW!)
+1. Go to the **"Query Ranker"** tab
+2. Check the system status to ensure documents are loaded
+3. **Enter your search query** in the search box
+4. **Choose your retrieval method**:
+   - **🎯 Similarity Search**: Semantic similarity with real scores
+   - **🔀 MMR (Diverse)**: Diverse results with reduced redundancy
+   - **🔍 BM25 (Keywords)**: Traditional keyword-based search
+   - **🔗 Hybrid (Recommended)**: Best overall accuracy combining semantic + keyword
+5. **Adjust result count** (1-10) using the slider
+6. **Review ranked results** with confidence levels and source information
+7. **Compare methods** by trying different retrieval strategies on the same query
+8. Use results to understand how your documents are chunked and ranked
+
 #### 🔍 **Retrieval Strategy Guide:**
 - **For research papers**: Use MMR to get diverse perspectives
 - **For technical docs**: Use Hybrid for comprehensive coverage
 - **For specific facts**: Use Similarity for targeted results
 - **For broad topics**: Use Hybrid for balanced semantic + keyword matching
+- **For transparency**: Use Query Ranker to see exactly which chunks are being retrieved
 
 ## Local Development
 
@@ -417,7 +444,7 @@ markit_v2/
 │   │   └── ingestion.py    # Document ingestion pipeline
 │   └── ui/                 # User interface layer
 │       ├── __init__.py     # Package initialization
-│       └── ui.py           # Gradio UI with dual tabs (Converter + Chat)
+│       └── ui.py           # 🆕 Gradio UI with three tabs (Converter + Chat + Query Ranker)
 ├── documents/              # Documentation and examples (gitignored)
 ├── tessdata/               # Tesseract OCR data (gitignored)
 └── tests/                  # 🆕 Test suite for Phase 1 RAG implementation
@@ -438,6 +465,7 @@ markit_v2/
 - **Lightweight Launcher**: Quick development startup with `run_app.py`
 - **Centralized Logging**: Configurable logging system (`src/core/logging_config.py`)
 - **🆕 RAG System**: Complete RAG implementation with vector search and chat capabilities
+- **🆕 Query Ranker Interface**: Dedicated transparency tool for document search and ranking
 
 ### 🧠 **RAG System Architecture:**
 - **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
