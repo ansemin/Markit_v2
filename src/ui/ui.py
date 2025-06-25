@@ -45,6 +45,51 @@ def monitor_cancellation():
         time.sleep(0.1)  # Check every 100ms
     logger.info("Cancellation monitor thread ending")
 
+def update_ui_for_file_count(files):
+    """Update UI components based on the number of files uploaded."""
+    if not files or len(files) == 0:
+        return (
+            gr.update(visible=False),  # processing_type_selector
+            "<div style='color: #666; font-style: italic;'>Upload documents to begin</div>"  # file_status_text
+        )
+    
+    if len(files) == 1:
+        file_name = files[0].name if hasattr(files[0], 'name') else str(files[0])
+        return (
+            gr.update(visible=False),  # processing_type_selector (hidden for single file)
+            f"<div style='color: #2563eb; font-weight: 500;'>📄 Single document: {file_name}</div>"
+        )
+    else:
+        # Calculate total size for validation display
+        total_size = 0
+        try:
+            for file in files:
+                if hasattr(file, 'size'):
+                    total_size += file.size
+                elif hasattr(file, 'name'):
+                    # For file paths, get size from filesystem
+                    total_size += Path(file.name).stat().st_size
+        except:
+            pass  # Size calculation is optional for display
+        
+        size_display = f" ({total_size / (1024*1024):.1f}MB)" if total_size > 0 else ""
+        
+        # Check if within limits
+        if len(files) > 5:
+            status_color = "#dc2626"  # red
+            status_text = f"⚠️ Too many files: {len(files)}/5 (max 5 files allowed)"
+        elif total_size > 20 * 1024 * 1024:  # 20MB
+            status_color = "#dc2626"  # red
+            status_text = f"⚠️ Files too large{size_display} (max 20MB combined)"
+        else:
+            status_color = "#059669"  # green
+            status_text = f"📂 Batch mode: {len(files)} files{size_display}"
+        
+        return (
+            gr.update(visible=True),  # processing_type_selector (visible for multiple files)
+            f"<div style='color: {status_color}; font-weight: 500;'>{status_text}</div>"
+        )
+
 def validate_file_for_parser(file_path, parser_name):
     """Validate if the file type is supported by the selected parser."""
     if not file_path:
@@ -112,8 +157,48 @@ def run_conversion_thread(file_path, parser_name, ocr_method_name, output_format
     
     return thread, results
 
-def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_cancelled):
-    """Handle file conversion."""
+def run_conversion_thread_multi(file_paths, parser_name, ocr_method_name, output_format, processing_type):
+    """Run the conversion in a separate thread for multiple files."""
+    import threading
+    from src.services.document_service import DocumentService
+    
+    # Results will be shared between threads
+    results = {"content": None, "download_file": None, "error": None}
+    
+    def conversion_worker():
+        try:
+            logger.info(f"Starting multi-file conversion thread for {len(file_paths)} files")
+            
+            # Use the new document service unified method
+            document_service = DocumentService()
+            document_service.set_cancellation_flag(conversion_cancelled)
+            
+            # Call the unified convert_documents method
+            content, output_file = document_service.convert_documents(
+                file_paths=file_paths,
+                parser_name=parser_name,
+                ocr_method_name=ocr_method_name,
+                output_format=output_format,
+                processing_type=processing_type
+            )
+            
+            logger.info(f"Multi-file conversion completed successfully for {len(file_paths)} files")
+            results["content"] = content
+            results["download_file"] = output_file
+            
+        except Exception as e:
+            logger.error(f"Error during multi-file conversion: {str(e)}")
+            results["error"] = str(e)
+    
+    # Create and start the thread
+    thread = threading.Thread(target=conversion_worker)
+    thread.daemon = True
+    thread.start()
+    
+    return thread, results
+
+def handle_convert(files, parser_name, ocr_method_name, output_format, processing_type, is_cancelled):
+    """Handle file conversion for single or multiple files."""
     global conversion_cancelled
     
     # Check if we should cancel before starting
@@ -121,16 +206,31 @@ def handle_convert(file_path, parser_name, ocr_method_name, output_format, is_ca
         logger.info("Conversion cancelled before starting")
         return "Conversion cancelled.", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
-    # Validate file type for the selected parser
-    is_valid, error_msg = validate_file_for_parser(file_path, parser_name)
-    if not is_valid:
-        logger.error(f"File validation error: {error_msg}")
+    # Validate files input
+    if not files or len(files) == 0:
+        error_msg = "No files uploaded. Please upload at least one document."
+        logger.error(error_msg)
         return f"Error: {error_msg}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     
-    logger.info("Starting conversion with cancellation flag cleared")
+    # Convert Gradio file objects to file paths
+    file_paths = []
+    for file in files:
+        if hasattr(file, 'name'):
+            file_paths.append(file.name)
+        else:
+            file_paths.append(str(file))
+    
+    # Validate file types for the selected parser
+    for file_path in file_paths:
+        is_valid, error_msg = validate_file_for_parser(file_path, parser_name)
+        if not is_valid:
+            logger.error(f"File validation error: {error_msg}")
+            return f"Error: {error_msg}", None, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
+    
+    logger.info(f"Starting conversion of {len(file_paths)} file(s) with cancellation flag cleared")
     
     # Start the conversion in a separate thread
-    thread, results = run_conversion_thread(file_path, parser_name, ocr_method_name, output_format)
+    thread, results = run_conversion_thread_multi(file_paths, parser_name, ocr_method_name, output_format, processing_type)
     
     # Start the monitoring thread
     monitor_thread = threading.Thread(target=monitor_cancellation)
@@ -763,8 +863,27 @@ def create_ui():
                 # State to store the output format (fixed to Markdown)
                 output_format_state = gr.State("Markdown")
 
-                # File input first
-                file_input = gr.File(label="Upload Document", type="filepath")
+                # Multi-file input (supports single and multiple files)
+                files_input = gr.Files(
+                    label="Upload Document(s) - Single file or up to 5 files (20MB max combined)",
+                    file_count="multiple",
+                    file_types=[".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".txt", ".md", ".html", ".htm"]
+                )
+                
+                # Processing type selector (visible only for multiple files)
+                processing_type_selector = gr.Radio(
+                    choices=["combined", "individual", "summary", "comparison"],
+                    value="combined",
+                    label="Multi-Document Processing Type",
+                    info="How to process multiple documents together",
+                    visible=False
+                )
+                
+                # Status text to show file count and processing mode
+                file_status_text = gr.HTML(
+                    value="<div style='color: #666; font-style: italic;'>Upload documents to begin</div>",
+                    label=""
+                )
                 
                 # Provider and OCR options below the file input
                 with gr.Row(elem_classes=["provider-options-row"]):
@@ -805,6 +924,14 @@ def create_ui():
                     cancel_button = gr.Button("Cancel", variant="stop", visible=False)
 
                 # Event handlers for document converter
+                
+                # Update UI when files are uploaded/changed
+                files_input.change(
+                    fn=update_ui_for_file_count,
+                    inputs=[files_input],
+                    outputs=[processing_type_selector, file_status_text]
+                )
+                
                 provider_dropdown.change(
                     lambda p: gr.Dropdown(
                         choices=["Plain Text", "Formatted Text"] if "GOT-OCR" in p else ParserRegistry.get_ocr_options(p),
@@ -845,7 +972,7 @@ def create_ui():
                     queue=False  # Execute immediately
                 ).then(
                     fn=handle_convert,
-                    inputs=[file_input, provider_dropdown, ocr_dropdown, output_format_state, cancel_requested],
+                    inputs=[files_input, provider_dropdown, ocr_dropdown, output_format_state, processing_type_selector, cancel_requested],
                     outputs=[file_display, file_download, convert_button, cancel_button, conversion_thread]
                 )
                 
