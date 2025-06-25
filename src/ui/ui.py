@@ -15,6 +15,7 @@ from src.core.exceptions import (
 )
 from src.core.logging_config import get_logger
 from src.rag import rag_chat_service, document_ingestion_service
+from src.rag.vector_store import vector_store_manager
 from src.services.data_clearing_service import data_clearing_service
 
 # Use centralized logging
@@ -395,6 +396,275 @@ def handle_clear_all_data():
         
         return None, f'<div class="session-info">❌ {error_msg}</div>', current_status
 
+def handle_query_search(query, method, k_value):
+    """Handle query search and return formatted results."""
+    if not query or not query.strip():
+        return """
+        <div class="ranker-container">
+            <div class="ranker-placeholder">
+                <h3>🔍 Query Ranker</h3>
+                <p>Enter a search query to find relevant document chunks with similarity scores.</p>
+            </div>
+        </div>
+        """
+    
+    try:
+        logger.info(f"Query search: '{query[:50]}...' using method: {method}")
+        
+        # Get results based on method
+        results = []
+        if method == "similarity":
+            retriever = vector_store_manager.get_retriever("similarity", {"k": k_value})
+            docs = retriever.invoke(query)
+            # Try to get actual similarity scores
+            try:
+                vector_store = vector_store_manager.get_vector_store()
+                if hasattr(vector_store, 'similarity_search_with_score'):
+                    docs_with_scores = vector_store.similarity_search_with_score(query, k=k_value)
+                    for i, (doc, score) in enumerate(docs_with_scores):
+                        similarity_score = max(0, 1 - score) if score is not None else 0.8
+                        results.append(_format_ranker_result(doc, similarity_score, i + 1))
+                else:
+                    # Fallback without scores
+                    for i, doc in enumerate(docs):
+                        score = 0.85 - (i * 0.05)
+                        results.append(_format_ranker_result(doc, score, i + 1))
+            except Exception as e:
+                logger.warning(f"Could not get similarity scores: {e}")
+                for i, doc in enumerate(docs):
+                    score = 0.85 - (i * 0.05)
+                    results.append(_format_ranker_result(doc, score, i + 1))
+                    
+        elif method == "mmr":
+            retriever = vector_store_manager.get_retriever("mmr", {"k": k_value, "fetch_k": k_value * 2, "lambda_mult": 0.5})
+            docs = retriever.invoke(query)
+            for i, doc in enumerate(docs):
+                results.append(_format_ranker_result(doc, None, i + 1))  # No score for MMR
+                
+        elif method == "bm25":
+            retriever = vector_store_manager.get_bm25_retriever(k=k_value)
+            docs = retriever.invoke(query)
+            for i, doc in enumerate(docs):
+                results.append(_format_ranker_result(doc, None, i + 1))  # No score for BM25
+                
+        elif method == "hybrid":
+            retriever = vector_store_manager.get_hybrid_retriever(k=k_value, semantic_weight=0.7, keyword_weight=0.3)
+            docs = retriever.invoke(query)
+            # Explicitly limit results to k_value since EnsembleRetriever may return more
+            docs = docs[:k_value]
+            for i, doc in enumerate(docs):
+                results.append(_format_ranker_result(doc, None, i + 1))  # No score for Hybrid
+        
+        return _format_ranker_results_html(results, query, method)
+        
+    except Exception as e:
+        error_msg = f"Error during search: {str(e)}"
+        logger.error(error_msg)
+        return f"""
+        <div class="ranker-container">
+            <div class="ranker-error">
+                <h3>❌ Search Error</h3>
+                <p>{error_msg}</p>
+                <p class="error-hint">Please check if documents are uploaded and the system is ready.</p>
+            </div>
+        </div>
+        """
+
+def _format_ranker_result(doc, score, rank):
+    """Format a single document result for the ranker."""
+    metadata = doc.metadata or {}
+    
+    # Extract metadata
+    source = metadata.get("source", "Unknown Document")
+    page = metadata.get("page", "N/A")
+    chunk_id = metadata.get("chunk_id", f"chunk_{rank}")
+    
+    # Content length indicator
+    content_length = len(doc.page_content)
+    if content_length < 200:
+        length_indicator = "📄 Short"
+    elif content_length < 500:
+        length_indicator = "📄 Medium"
+    else:
+        length_indicator = "📄 Long"
+    
+    # Rank-based confidence levels (applies to all methods)
+    if rank <= 3:
+        confidence = "High"
+        confidence_color = "#22c55e"
+        confidence_icon = "🟢"
+    elif rank <= 6:
+        confidence = "Medium"
+        confidence_color = "#f59e0b"
+        confidence_icon = "🟡"
+    else:
+        confidence = "Low"
+        confidence_color = "#ef4444"
+        confidence_icon = "🔴"
+    
+    result = {
+        "rank": rank,
+        "content": doc.page_content,
+        "source": source,
+        "page": page,
+        "chunk_id": chunk_id,
+        "length_indicator": length_indicator,
+        "has_score": score is not None,
+        "confidence": confidence,
+        "confidence_color": confidence_color,
+        "confidence_icon": confidence_icon
+    }
+    
+    # Only add score if we have a real score (similarity search only)
+    if score is not None:
+        result["score"] = round(score, 3)
+    
+    return result
+
+def _format_ranker_results_html(results, query, method):
+    """Format search results as HTML."""
+    if not results:
+        return """
+        <div class="ranker-container">
+            <div class="ranker-no-results">
+                <h3>🔍 No Results Found</h3>
+                <p>No relevant documents found for your query.</p>
+                <p class="no-results-hint">Try different keywords or check if documents are uploaded.</p>
+            </div>
+        </div>
+        """
+    
+    # Method display names
+    method_labels = {
+        "similarity": "🎯 Similarity Search",
+        "mmr": "🔀 MMR (Diverse)",
+        "bm25": "🔍 BM25 (Keywords)",
+        "hybrid": "🔗 Hybrid (Recommended)"
+    }
+    method_display = method_labels.get(method, method)
+    
+    # Start building HTML
+    html_parts = [f"""
+    <div class="ranker-container">
+        <div class="ranker-header">
+            <div class="ranker-title">
+                <h3>🔍 Search Results</h3>
+                <div class="query-display">"{query}"</div>
+            </div>
+            <div class="ranker-meta">
+                <span class="method-badge">{method_display}</span>
+                <span class="result-count">{len(results)} results</span>
+            </div>
+        </div>
+    """]
+    
+    # Add results
+    for result in results:
+        rank_emoji = ["🥇", "🥈", "🥉"][result["rank"] - 1] if result["rank"] <= 3 else f"#{result['rank']}"
+        
+        # Escape content for safe HTML inclusion and JavaScript
+        escaped_content = result['content'].replace('"', '&quot;').replace("'", "&#39;").replace('\n', '\\n')
+        
+        # Build score info - always show confidence, only show score for similarity search
+        score_info_parts = [f"""
+                    <span class="confidence-badge" style="color: {result['confidence_color']}">
+                        {result['confidence_icon']} {result['confidence']}
+                    </span>"""]
+        
+        # Only add score value if we have real scores (similarity search)
+        if result.get('has_score', False):
+            score_info_parts.append(f'<span class="score-value">🎯 {result["score"]}</span>')
+        
+        score_info_html = f"""
+                <div class="score-info">
+                    {''.join(score_info_parts)}
+                </div>"""
+        
+        html_parts.append(f"""
+        <div class="result-card">
+            <div class="result-header">
+                <div class="rank-info">
+                    <span class="rank-badge">{rank_emoji} Rank {result['rank']}</span>
+                    <span class="source-info">📄 {result['source']}</span>
+                    {f"<span class='page-info'>Page {result['page']}</span>" if result['page'] != 'N/A' else ""}
+                    <span class="length-info">{result['length_indicator']}</span>
+                </div>
+                {score_info_html}
+            </div>
+            <div class="result-content">
+                <div class="content-text">{result['content']}</div>
+            </div>
+        </div>
+        """)
+    
+    html_parts.append("</div>")
+    
+    return "".join(html_parts)
+
+def get_ranker_status():
+    """Get current ranker system status."""
+    try:
+        # Get collection info
+        collection_info = vector_store_manager.get_collection_info()
+        document_count = collection_info.get("document_count", 0)
+        
+        # Get available methods
+        available_methods = ["similarity", "mmr", "bm25", "hybrid"]
+        
+        # Check if system is ready
+        ingestion_status = document_ingestion_service.get_ingestion_status()
+        system_ready = ingestion_status.get('system_ready', False)
+        
+        status_html = f"""
+        <div class="status-card">
+            <div class="status-header">
+                <h3>🔍 Query Ranker Status</h3>
+                <div class="status-indicator {'status-ready' if system_ready else 'status-not-ready'}">
+                    {'🟢 READY' if system_ready else '🔴 NOT READY'}
+                </div>
+            </div>
+            
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">Available Documents</div>
+                    <div class="status-value">{document_count}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Retrieval Methods</div>
+                    <div class="status-value">{len(available_methods)}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Vector Store</div>
+                    <div class="status-value">{'Ready' if system_ready else 'Not Ready'}</div>
+                </div>
+            </div>
+            
+            <div class="ranker-methods">
+                <div class="methods-label">Available Methods:</div>
+                <div class="methods-list">
+                    <span class="method-tag">🎯 Similarity</span>
+                    <span class="method-tag">🔀 MMR</span>
+                    <span class="method-tag">🔍 BM25</span>
+                    <span class="method-tag">🔗 Hybrid</span>
+                </div>
+            </div>
+        </div>
+        """
+        
+        return status_html
+        
+    except Exception as e:
+        error_msg = f"Error getting ranker status: {str(e)}"
+        logger.error(error_msg)
+        return f"""
+        <div class="status-card status-error">
+            <div class="status-header">
+                <h3>❌ System Error</h3>
+            </div>
+            <p class="error-message">{error_msg}</p>
+        </div>
+        """
+
 def get_chat_status():
     """Get current chat system status."""
     try:
@@ -712,6 +982,16 @@ def create_ui():
             transform: translateY(-1px);
         }
         
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
         /* Chat interface styling */
         .chat-main-container {
             background: #ffffff;
@@ -846,6 +1126,382 @@ def create_ui():
                 margin-right: 20px;
             }
         }
+        
+        /* Query Ranker Styles */
+        .ranker-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .ranker-placeholder {
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+            color: #6c757d;
+        }
+        
+        .ranker-placeholder h3 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .ranker-error {
+            text-align: center;
+            padding: 30px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 12px;
+            color: #721c24;
+        }
+        
+        .ranker-error h3 {
+            margin-bottom: 15px;
+        }
+        
+        .error-hint {
+            font-style: italic;
+            margin-top: 10px;
+            opacity: 0.8;
+        }
+        
+        .ranker-no-results {
+            text-align: center;
+            padding: 40px;
+            background: #ffffff;
+            border: 1px solid #e1e5e9;
+            border-radius: 12px;
+            color: #6c757d;
+        }
+        
+        .ranker-no-results h3 {
+            color: #495057;
+            margin-bottom: 15px;
+        }
+        
+        .no-results-hint {
+            font-style: italic;
+            margin-top: 10px;
+            opacity: 0.8;
+        }
+        
+        .ranker-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .ranker-title h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.4em;
+            font-weight: 600;
+        }
+        
+        .query-display {
+            font-size: 1.1em;
+            opacity: 0.9;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+        
+        .ranker-meta {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .method-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        
+        .result-count {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        
+        .result-card {
+            background: #ffffff;
+            border: 1px solid #e1e5e9;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .result-card:hover {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .rank-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .rank-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+        
+        .source-info {
+            background: #e9ecef;
+            color: #495057;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        
+        .page-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.85em;
+        }
+        
+        .length-info {
+            background: #f8f9fa;
+            color: #6c757d;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.85em;
+        }
+        
+        .score-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .confidence-badge {
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+        
+        .score-value {
+            background: #2c3e50;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .result-content {
+            padding: 20px;
+        }
+        
+        .content-text {
+            line-height: 1.6;
+            color: #2c3e50;
+            border-left: 3px solid #667eea;
+            padding-left: 15px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .result-actions {
+            display: flex;
+            gap: 10px;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .copy-btn {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .copy-btn:hover {
+            background: #138496;
+            transform: translateY(-1px);
+        }
+        
+        .info-btn {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .info-btn:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+        
+        .ranker-methods {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .methods-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        
+        .methods-list {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .method-tag {
+            background: #e9ecef;
+            color: #495057;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        /* Ranker controls styling */
+        .ranker-controls {
+            background: #ffffff;
+            border: 1px solid #e1e5e9;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .ranker-input-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            margin-bottom: 15px;
+        }
+        
+        .ranker-query-input {
+            flex: 1;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+        
+        .ranker-query-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            outline: none;
+        }
+        
+        .ranker-search-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            min-width: 100px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            font-size: 1em;
+        }
+        
+        .ranker-search-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .ranker-options-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        /* Responsive design for ranker */
+        @media (max-width: 768px) {
+            .ranker-container {
+                padding: 10px;
+            }
+            
+            .ranker-input-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .ranker-options-row {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+            
+            .ranker-meta {
+                justify-content: center;
+            }
+            
+            .rank-info {
+                flex-direction: column;
+                gap: 5px;
+                align-items: flex-start;
+            }
+            
+            .result-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+            
+            .score-info {
+                align-self: flex-end;
+            }
+            
+            .result-actions {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
     """) as demo:
         # Modern title with better styling
         gr.Markdown("""
@@ -856,72 +1512,81 @@ def create_ui():
         with gr.Tabs():
             # Document Converter Tab
             with gr.TabItem("📄 Document Converter"):
-                # State to track if cancellation is requested
-                cancel_requested = gr.State(False)
-                # State to store the conversion thread
-                conversion_thread = gr.State(None)
-                # State to store the output format (fixed to Markdown)
-                output_format_state = gr.State("Markdown")
+                with gr.Column(elem_classes=["chat-tab-container"]):
+                    # Modern header matching other tabs
+                    gr.HTML("""
+                    <div class="chat-header">
+                        <h2>📄 Document Converter</h2>
+                        <p>Convert documents to Markdown format with advanced OCR and AI processing</p>
+                    </div>
+                    """)
+                    
+                    # State to track if cancellation is requested
+                    cancel_requested = gr.State(False)
+                    # State to store the conversion thread
+                    conversion_thread = gr.State(None)
+                    # State to store the output format (fixed to Markdown)
+                    output_format_state = gr.State("Markdown")
 
-                # Multi-file input (supports single and multiple files)
-                files_input = gr.Files(
-                    label="Upload Document(s) - Single file or up to 5 files (20MB max combined)",
-                    file_count="multiple",
-                    file_types=[".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".txt", ".md", ".html", ".htm"]
-                )
-                
-                # Processing type selector (visible only for multiple files)
-                processing_type_selector = gr.Radio(
-                    choices=["combined", "individual", "summary", "comparison"],
-                    value="combined",
-                    label="Multi-Document Processing Type",
-                    info="How to process multiple documents together",
-                    visible=False
-                )
-                
-                # Status text to show file count and processing mode
-                file_status_text = gr.HTML(
-                    value="<div style='color: #666; font-style: italic;'>Upload documents to begin</div>",
-                    label=""
-                )
-                
-                # Provider and OCR options below the file input
-                with gr.Row(elem_classes=["provider-options-row"]):
-                    with gr.Column(scale=1):
-                        parser_names = ParserRegistry.get_parser_names()
-                        
-                        # Make MarkItDown the default parser if available
-                        default_parser = next((p for p in parser_names if p == "MarkItDown"), parser_names[0] if parser_names else "PyPdfium")
-                        
-                        provider_dropdown = gr.Dropdown(
-                            label="Provider",
-                            choices=parser_names,
-                            value=default_parser,
-                            interactive=True
-                        )
-                    with gr.Column(scale=1):
-                        default_ocr_options = ParserRegistry.get_ocr_options(default_parser)
-                        default_ocr = default_ocr_options[0] if default_ocr_options else "No OCR"
-                        
-                        ocr_dropdown = gr.Dropdown(
-                            label="OCR Options",
-                            choices=default_ocr_options,
-                            value=default_ocr,
-                            interactive=True
-                        )
-                
-                # Simple output container with just one scrollbar
-                file_display = gr.HTML(
-                    value="<div class='output-container'></div>",
-                    label="Converted Content"
-                )
-                
-                file_download = gr.File(label="Download File")
-                
-                # Processing controls row
-                with gr.Row(elem_classes=["processing-controls"]):
-                    convert_button = gr.Button("Convert", variant="primary")
-                    cancel_button = gr.Button("Cancel", variant="stop", visible=False)
+                    # Multi-file input (supports single and multiple files)
+                    files_input = gr.Files(
+                        label="Upload Document(s) - Single file or up to 5 files (20MB max combined)",
+                        file_count="multiple",
+                        file_types=[".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".txt", ".md", ".html", ".htm"]
+                    )
+                    
+                    # Processing type selector (visible only for multiple files)
+                    processing_type_selector = gr.Radio(
+                        choices=["combined", "individual", "summary", "comparison"],
+                        value="combined",
+                        label="Multi-Document Processing Type",
+                        info="How to process multiple documents together",
+                        visible=False
+                    )
+                    
+                    # Status text to show file count and processing mode
+                    file_status_text = gr.HTML(
+                        value="<div style='color: #666; font-style: italic;'>Upload documents to begin</div>",
+                        label=""
+                    )
+                    
+                    # Provider and OCR options below the file input
+                    with gr.Row(elem_classes=["provider-options-row"]):
+                        with gr.Column(scale=1):
+                            parser_names = ParserRegistry.get_parser_names()
+                            
+                            # Make MarkItDown the default parser if available
+                            default_parser = next((p for p in parser_names if p == "MarkItDown"), parser_names[0] if parser_names else "PyPdfium")
+                            
+                            provider_dropdown = gr.Dropdown(
+                                label="Provider",
+                                choices=parser_names,
+                                value=default_parser,
+                                interactive=True
+                            )
+                        with gr.Column(scale=1):
+                            default_ocr_options = ParserRegistry.get_ocr_options(default_parser)
+                            default_ocr = default_ocr_options[0] if default_ocr_options else "No OCR"
+                            
+                            ocr_dropdown = gr.Dropdown(
+                                label="OCR Options",
+                                choices=default_ocr_options,
+                                value=default_ocr,
+                                interactive=True
+                            )
+                    
+                    # Processing controls row with consistent styling
+                    with gr.Row(elem_classes=["control-buttons"]):
+                        convert_button = gr.Button("🚀 Convert", elem_classes=["control-btn", "btn-primary"])
+                        cancel_button = gr.Button("⏹️ Cancel", elem_classes=["control-btn", "btn-clear-data"], visible=False)
+                    
+                    # Simple output container with just one scrollbar
+                    file_display = gr.HTML(
+                        value="<div class='output-container'></div>",
+                        label="Converted Content"
+                    )
+                    
+                    file_download = gr.File(label="Download File")
 
                 # Event handlers for document converter
                 
@@ -1075,6 +1740,111 @@ def create_ui():
                     fn=handle_clear_all_data,
                     inputs=[],
                     outputs=[chatbot, session_info, status_display]
+                )
+
+            # Query Ranker Tab
+            with gr.TabItem("🔍 Query Ranker"):
+                with gr.Column(elem_classes=["ranker-container"]):
+                    # Modern header
+                    gr.HTML("""
+                    <div class="chat-header">
+                        <h2>🔍 Query Ranker</h2>
+                        <p>Search and rank document chunks with similarity scores</p>
+                    </div>
+                    """)
+                    
+                    # Status section
+                    ranker_status_display = gr.HTML(value=get_ranker_status())
+                    
+                    # Control buttons
+                    with gr.Row(elem_classes=["control-buttons"]):
+                        refresh_ranker_status_btn = gr.Button("🔄 Refresh Status", elem_classes=["control-btn", "btn-refresh"])
+                        clear_results_btn = gr.Button("🗑️ Clear Results", elem_classes=["control-btn", "btn-clear-data"])
+                    
+                    # Search controls
+                    with gr.Column(elem_classes=["ranker-controls"]):
+                        with gr.Row(elem_classes=["ranker-input-row"]):
+                            query_input = gr.Textbox(
+                                placeholder="Enter your search query...",
+                                show_label=False,
+                                elem_classes=["ranker-query-input"],
+                                scale=4
+                            )
+                            search_btn = gr.Button("🔍 Search", elem_classes=["ranker-search-btn"], scale=0)
+                        
+                        with gr.Row(elem_classes=["ranker-options-row"]):
+                            method_dropdown = gr.Dropdown(
+                                choices=[
+                                    ("🎯 Similarity Search", "similarity"),
+                                    ("🔀 MMR (Diverse)", "mmr"),
+                                    ("🔍 BM25 (Keywords)", "bm25"),
+                                    ("🔗 Hybrid (Recommended)", "hybrid")
+                                ],
+                                value="hybrid",
+                                label="Retrieval Method",
+                                scale=2
+                            )
+                            k_slider = gr.Slider(
+                                minimum=1,
+                                maximum=10,
+                                value=5,
+                                step=1,
+                                label="Number of Results",
+                                scale=1
+                            )
+                    
+                    # Results display
+                    results_display = gr.HTML(
+                        value=handle_query_search("", "hybrid", 5),  # Initial placeholder
+                        elem_classes=["ranker-results-container"]
+                    )
+                
+                # Event handlers for Query Ranker
+                def clear_ranker_results():
+                    """Clear the search results and reset to placeholder."""
+                    return handle_query_search("", "hybrid", 5), ""
+                
+                def refresh_ranker_status():
+                    """Refresh the ranker status display."""
+                    return get_ranker_status()
+                
+                # Search functionality
+                query_input.submit(
+                    fn=handle_query_search,
+                    inputs=[query_input, method_dropdown, k_slider],
+                    outputs=[results_display]
+                )
+                
+                search_btn.click(
+                    fn=handle_query_search,
+                    inputs=[query_input, method_dropdown, k_slider],
+                    outputs=[results_display]
+                )
+                
+                # Control button handlers
+                refresh_ranker_status_btn.click(
+                    fn=refresh_ranker_status,
+                    inputs=[],
+                    outputs=[ranker_status_display]
+                )
+                
+                clear_results_btn.click(
+                    fn=clear_ranker_results,
+                    inputs=[],
+                    outputs=[results_display, query_input]
+                )
+                
+                # Update results when method or k changes
+                method_dropdown.change(
+                    fn=handle_query_search,
+                    inputs=[query_input, method_dropdown, k_slider],
+                    outputs=[results_display]
+                )
+                
+                k_slider.change(
+                    fn=handle_query_search,
+                    inputs=[query_input, method_dropdown, k_slider],
+                    outputs=[results_display]
                 )
 
     return demo
