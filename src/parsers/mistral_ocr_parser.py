@@ -357,7 +357,168 @@ class MistralOcrParser(DocumentParser):
         
         return markdown
     
+    def _validate_batch_files(self, file_paths: List[Path]) -> None:
+        """Validate batch of files for multi-document processing."""
+        if len(file_paths) == 0:
+            raise DocumentProcessingError("No files provided for processing")
+        if len(file_paths) > 5:
+            raise DocumentProcessingError("Maximum 5 files allowed for batch processing")
 
+        total_size = 0
+        for fp in file_paths:
+            if not fp.exists():
+                raise DocumentProcessingError(f"File not found: {fp}")
+            size = fp.stat().st_size
+            if size > 10 * 1024 * 1024:
+                raise DocumentProcessingError(f"Individual file size exceeds 10MB: {fp.name}")
+            total_size += size
+        if total_size > 20 * 1024 * 1024:
+            raise DocumentProcessingError(f"Combined file size ({total_size / (1024*1024):.1f}MB) exceeds 20MB limit")
+
+        # simple mime validation
+        for fp in file_paths:
+            if self._get_mime_type(fp.suffix.lower()) == "application/octet-stream":
+                raise DocumentProcessingError(f"Unsupported file type: {fp.name}")
+
+    def _create_document_part(self, file_path: Path) -> Dict[str, Any]:
+        """Return a dict representing an image_url or document_url part for Mistral chat/OCR."""
+        ext = file_path.suffix.lower()
+        if ext == '.pdf':
+            # upload and get signed url
+            client = Mistral(api_key=config.api.mistral_api_key)
+            uploaded = client.files.upload(
+                file={
+                    "file_name": file_path.name,
+                    "content": open(file_path, "rb"),
+                },
+                purpose="ocr",
+            )
+            signed = client.files.get_signed_url(file_id=uploaded.id)
+            return {
+                "type": "document_url",
+                "document_url": signed.url,
+            }
+        else:
+            # encode image
+            b64 = self.encode_image(file_path)
+            mime = self._get_mime_type(ext)
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime};base64,{b64}"
+                }
+            }
+
+    def _create_batch_prompt(self, file_paths: List[Path], processing_type: str, original_filenames: Optional[List[str]] = None) -> str:
+        if original_filenames:
+            names = original_filenames
+        else:
+            names = [fp.name for fp in file_paths]
+        file_list = "\n".join([f"- {name}" for name in names])
+        base = f"I will provide you with {len(file_paths)} documents.\n{file_list}\n\n"
+        if processing_type == "individual":
+            return base + "Please convert each document to markdown as its own section, preserving structure."
+        if processing_type == "summary":
+            return base + (
+                "Please first write an EXECUTIVE SUMMARY of all documents, then include converted markdown sections per document."
+            )
+        if processing_type == "comparison":
+            return base + (
+                "Please provide a comparison table of the documents, then individual summaries and cross-document insights."
+            )
+        # default combined
+        return base + "Please merge the content of all documents into a single cohesive markdown document."
+
+    def _format_batch_output(self, response_text: str, file_paths: List[Path], processing_type: str, original_filenames: Optional[List[str]] = None) -> str:
+        if original_filenames:
+            names = original_filenames
+        else:
+            names = [fp.name for fp in file_paths]
+        header = (
+            f"<!-- Multi-Document Processing Results -->\n"
+            f"<!-- Processing Type: {processing_type} -->\n"
+            f"<!-- Files Processed: {len(file_paths)} -->\n"
+            f"<!-- File Names: {', '.join(names)} -->\n\n"
+        )
+        return header + response_text
+
+    def parse_multiple(
+        self,
+        file_paths: List[Union[str, Path]],
+        processing_type: str = "combined",
+        original_filenames: Optional[List[str]] = None,
+        ocr_method: Optional[str] = None,
+        output_format: str = "markdown",
+        **kwargs,
+    ) -> str:
+        """Parse multiple documents, supporting the same processing types as Gemini parser."""
+        if not MISTRAL_AVAILABLE:
+            raise DocumentProcessingError("Mistral client not installed. Install with 'pip install mistralai'.")
+        if not config.api.mistral_api_key:
+            raise DocumentProcessingError("MISTRAL_API_KEY not set.")
+
+        try:
+            # convert to Path objects
+            paths = [Path(p) for p in file_paths]
+            self._validate_batch_files(paths)
+
+            if self._check_cancellation():
+                return "Conversion cancelled."
+
+            use_understanding = ocr_method == "understand"
+            client = Mistral(api_key=config.api.mistral_api_key)
+
+            if use_understanding:
+                # Build chat content with document parts
+                prompt = self._create_batch_prompt(paths, processing_type, original_filenames)
+                content_parts = [
+                    {"type": "text", "text": prompt},
+                ]
+                for p in paths:
+                    if self._check_cancellation():
+                        return "Conversion cancelled."
+                    content_parts.append(self._create_document_part(p))
+
+                chat_response = client.chat.complete(
+                    model="mistral-large-latest",
+                    max_tokens=config.model.max_tokens,
+                    temperature=config.model.temperature,
+                    messages=[{"role": "user", "content": content_parts}],
+                )
+                markdown_text = chat_response.choices[0].message.content
+                return self._format_batch_output(markdown_text, paths, processing_type, original_filenames)
+
+            # else basic OCR path
+            results = []
+            for idx, p in enumerate(paths):
+                if self._check_cancellation():
+                    return "Conversion cancelled."
+                text = self._extract_with_ocr(client, p, p.suffix.lower())
+                if processing_type == "individual":
+                    name = (original_filenames[idx] if original_filenames else p.name)
+                    text = f"# Document {idx+1}: {name}\n\n" + text
+                results.append(text)
+
+            combined_md = "\n\n---\n\n".join(results) if processing_type in ["individual", "combined"] else "\n\n".join(results)
+
+            # For summary/comparison we now ask chat to summarise
+            if processing_type in ["summary", "comparison"]:
+                prompt = self._create_batch_prompt(paths, processing_type, original_filenames)
+                chat_response = client.chat.complete(
+                    model="mistral-large-latest",
+                    max_tokens=config.model.max_tokens,
+                    temperature=config.model.temperature,
+                    messages=[
+                        {"role": "user", "content": prompt + "\n\n" + combined_md}
+                    ],
+                )
+                combined_md = chat_response.choices[0].message.content
+
+            return self._format_batch_output(combined_md, paths, processing_type, original_filenames)
+
+        except Exception as e:
+            logger.error(f"Error parsing multiple documents with Mistral OCR: {str(e)}")
+            raise DocumentProcessingError(f"Batch processing failed: {str(e)}")
 
 # Register the parser with the registry
 if MISTRAL_AVAILABLE:

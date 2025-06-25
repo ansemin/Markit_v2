@@ -23,9 +23,10 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 - **🆕 Multi-Document Processing**: Process up to 5 files simultaneously (20MB combined)
 - Multiple parser options:
   - MarkItDown: For comprehensive document conversion
-  - Docling: For advanced PDF understanding with table structure recognition
+  - Docling: For advanced PDF understanding with table structure recognition + **multi-document processing**
   - GOT-OCR: For image-based OCR with LaTeX support
   - Gemini Flash: For AI-powered text extraction with **advanced multi-document capabilities**
+  - Mistral OCR: High-accuracy OCR for PDFs and images with optional *Document Understanding* mode + **multi-document processing**
 - **🆕 Intelligent Processing Types**:
   - **Combined**: Merge documents into unified content with duplicate removal
   - **Individual**: Separate sections per document with clear organization
@@ -61,14 +62,16 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 
 **MarkItDown** ([Microsoft](https://github.com/microsoft/markitdown)): PDF, Office docs, images, audio, HTML, ZIP files, YouTube URLs, EPubs, and more.
 
-**Docling** ([IBM](https://github.com/DS4SD/docling)): Advanced PDF understanding with table structure recognition, multiple OCR engines, and layout analysis.
+**Docling** ([IBM](https://github.com/DS4SD/docling)): Advanced PDF understanding with table structure recognition, multiple OCR engines, and layout analysis. **Supports multi-document processing** with Gemini-powered summary & comparison.
 
 **Gemini Flash** ([Google](https://deepmind.google/technologies/gemini/)): AI-powered document understanding with **advanced multi-document processing capabilities**, cross-format analysis, and intelligent content synthesis.
+
+**Mistral OCR**: High-accuracy OCR for PDFs and images with optional *Document Understanding* mode. **Supports multi-document processing** with Gemini-powered summary & comparison.
 
 ## 🚀 Multi-Document Processing
 
 ### **What makes this special?**
-Markit v2 introduces **industry-leading multi-document processing** powered by Google's Gemini Flash 2.5, enabling intelligent analysis across multiple documents simultaneously.
+Markit v2 introduces **industry-leading multi-document processing** with **three powerful parser options**: Gemini Flash (native multi-document AI), Mistral OCR (high-accuracy with Document Understanding), and Docling (advanced PDF analysis). All support intelligent cross-document analysis.
 
 ### **Key Capabilities:**
 - **📊 Cross-Document Analysis**: Compare and contrast information across different files
@@ -181,7 +184,10 @@ The application uses centralized configuration management. You can enhance funct
    - **Individual**: Keep documents separate with clear section headers
    - **Summary**: Executive overview + detailed analysis of each document
    - **Comparison**: Side-by-side analysis with similarities/differences tables
-5. Choose your preferred parser (recommend **Gemini Flash** for best multi-document results)
+5. Choose your preferred parser:
+   - **Gemini Flash**: Best for advanced cross-document reasoning and native multi-document support
+   - **Mistral OCR**: Great for high-accuracy OCR with Document Understanding mode
+   - **Docling**: Excellent for PDF table structure + multi-document analysis
 6. Click "Convert"
 7. Get intelligent cross-document analysis and download enhanced output
 
