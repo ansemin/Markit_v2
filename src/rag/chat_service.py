@@ -104,6 +104,9 @@ class RAGChatService:
         )
         self._llm = None
         self._rag_chain = None
+        self._current_retrieval_method = "similarity"
+        self._default_retrieval_method = "similarity"
+        self._default_retrieval_config = {"k": 4}
         
         logger.info("RAG chat service initialized")
     
@@ -132,15 +135,64 @@ class RAGChatService:
         
         return self._llm
     
-    def create_rag_chain(self):
-        """Create the RAG chain for document-aware conversations."""
-        if self._rag_chain is None:
+    def create_rag_chain(self, retrieval_method: str = "similarity", retrieval_config: Optional[Dict[str, Any]] = None):
+        """
+        Create the RAG chain for document-aware conversations.
+        
+        Args:
+            retrieval_method: Method to use ("similarity", "mmr", "hybrid")
+            retrieval_config: Configuration for the retrieval method
+        """
+        if self._rag_chain is None or hasattr(self, '_current_retrieval_method') and self._current_retrieval_method != retrieval_method:
             try:
                 llm = self.get_llm()
-                retriever = vector_store_manager.get_retriever(
-                    search_type="similarity",
-                    search_kwargs={"k": 4}
-                )
+                
+                # Set default retrieval config
+                if retrieval_config is None:
+                    retrieval_config = {"k": 4}
+                
+                # Get retriever based on method
+                if retrieval_method == "hybrid":
+                    # Use hybrid retriever (semantic + keyword)
+                    semantic_weight = retrieval_config.get("semantic_weight", 0.7)
+                    keyword_weight = retrieval_config.get("keyword_weight", 0.3)
+                    search_type = retrieval_config.get("search_type", "similarity")
+                    search_kwargs = {k: v for k, v in retrieval_config.items() 
+                                   if k not in ["semantic_weight", "keyword_weight", "search_type"]}
+                    
+                    retriever = vector_store_manager.get_hybrid_retriever(
+                        k=retrieval_config.get("k", 4),
+                        semantic_weight=semantic_weight,
+                        keyword_weight=keyword_weight,
+                        search_type=search_type,
+                        search_kwargs=search_kwargs if search_kwargs else None
+                    )
+                    logger.info(f"Using hybrid retriever with weights: semantic={semantic_weight}, keyword={keyword_weight}")
+                    
+                elif retrieval_method == "mmr":
+                    # Use MMR for diversity
+                    search_kwargs = retrieval_config.copy()
+                    if "fetch_k" not in search_kwargs:
+                        search_kwargs["fetch_k"] = retrieval_config.get("k", 4) * 5  # Default fetch 5x more for MMR
+                    if "lambda_mult" not in search_kwargs:
+                        search_kwargs["lambda_mult"] = 0.5  # Balance relevance vs diversity
+                    
+                    retriever = vector_store_manager.get_retriever(
+                        search_type="mmr",
+                        search_kwargs=search_kwargs
+                    )
+                    logger.info(f"Using MMR retriever with config: {search_kwargs}")
+                    
+                else:
+                    # Default similarity search
+                    retriever = vector_store_manager.get_retriever(
+                        search_type="similarity",
+                        search_kwargs=retrieval_config
+                    )
+                    logger.info(f"Using similarity retriever with config: {retrieval_config}")
+                
+                # Store current method for comparison
+                self._current_retrieval_method = retrieval_method
                 
                 # Create a prompt template for RAG
                 prompt_template = ChatPromptTemplate.from_template("""
@@ -209,11 +261,68 @@ User Message: {question}
                 logger.error(f"Failed to create RAG chain: {e}")
                 raise
     
-    def get_rag_chain(self):
-        """Get the RAG chain, creating it if necessary."""
-        if self._rag_chain is None:
-            self.create_rag_chain()
+    def get_rag_chain(self, retrieval_method: str = "similarity", retrieval_config: Optional[Dict[str, Any]] = None):
+        """
+        Get the RAG chain, creating it if necessary.
+        
+        Args:
+            retrieval_method: Method to use ("similarity", "mmr", "hybrid")
+            retrieval_config: Configuration for the retrieval method
+        """
+        if self._rag_chain is None or (hasattr(self, '_current_retrieval_method') and self._current_retrieval_method != retrieval_method):
+            self.create_rag_chain(retrieval_method, retrieval_config)
         return self._rag_chain
+    
+    def chat_stream_with_retrieval(self, user_message: str, retrieval_method: str = "similarity", retrieval_config: Optional[Dict[str, Any]] = None) -> Generator[str, None, None]:
+        """
+        Stream chat response using RAG with specified retrieval method.
+        
+        Args:
+            user_message: User's message
+            retrieval_method: Method to use ("similarity", "mmr", "hybrid")
+            retrieval_config: Configuration for the retrieval method
+            
+        Yields:
+            Chunks of the response as they're generated
+        """
+        try:
+            # Check usage limits
+            current_session = chat_memory_manager.current_session
+            session_message_count = len(current_session.messages) if current_session else 0
+            
+            can_send, reason = self.usage_limiter.can_send_message(session_message_count)
+            if not can_send:
+                yield f"❌ {reason}"
+                return
+            
+            # Record usage
+            self.usage_limiter.record_usage()
+            
+            # Add user message to memory
+            chat_memory_manager.add_message("user", user_message)
+            
+            # Get RAG chain with specified retrieval method
+            rag_chain = self.get_rag_chain(retrieval_method, retrieval_config)
+            
+            # Stream the response
+            response_chunks = []
+            for chunk in rag_chain.stream(user_message):
+                if chunk:
+                    response_chunks.append(chunk)
+                    yield chunk
+            
+            # Save complete response to memory
+            complete_response = "".join(response_chunks)
+            if complete_response.strip():
+                chat_memory_manager.add_message("assistant", complete_response)
+                
+                # Save session periodically
+                chat_memory_manager.save_session()
+            
+        except Exception as e:
+            error_msg = f"Error generating response: {str(e)}"
+            logger.error(error_msg)
+            yield f"❌ {error_msg}"
     
     def chat_stream(self, user_message: str) -> Generator[str, None, None]:
         """
@@ -306,6 +415,67 @@ User Message: {question}
             error_msg = f"Error generating response: {str(e)}"
             logger.error(error_msg)
             return f"❌ {error_msg}"
+    
+    def chat_with_retrieval(self, user_message: str, retrieval_method: str = "similarity", retrieval_config: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Get a complete chat response with specified retrieval method (non-streaming).
+        
+        Args:
+            user_message: User's message
+            retrieval_method: Method to use ("similarity", "mmr", "hybrid")
+            retrieval_config: Configuration for the retrieval method
+            
+        Returns:
+            Complete response string
+        """
+        try:
+            # Check usage limits
+            current_session = chat_memory_manager.current_session
+            session_message_count = len(current_session.messages) if current_session else 0
+            
+            can_send, reason = self.usage_limiter.can_send_message(session_message_count)
+            if not can_send:
+                return f"❌ {reason}"
+            
+            # Record usage
+            self.usage_limiter.record_usage()
+            
+            # Add user message to memory
+            chat_memory_manager.add_message("user", user_message)
+            
+            # Get RAG chain with specified retrieval method
+            rag_chain = self.get_rag_chain(retrieval_method, retrieval_config)
+            
+            # Get response
+            response = rag_chain.invoke(user_message)
+            
+            # Save response to memory
+            if response.strip():
+                chat_memory_manager.add_message("assistant", response)
+                chat_memory_manager.save_session()
+            
+            return response
+            
+        except Exception as e:
+            error_msg = f"Error generating response: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+    
+    def set_default_retrieval_method(self, method: str, config: Optional[Dict[str, Any]] = None):
+        """
+        Set the default retrieval method for this service.
+        
+        Args:
+            method: Retrieval method ("similarity", "mmr", "hybrid")
+            config: Configuration for the method
+        """
+        self._default_retrieval_method = method
+        self._default_retrieval_config = config or {}
+        
+        # Reset the chain to use new method
+        self._rag_chain = None
+        
+        logger.info(f"Default retrieval method set to: {method} with config: {config}")
     
     def get_usage_stats(self) -> Dict[str, Any]:
         """Get current usage statistics."""

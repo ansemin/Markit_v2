@@ -50,6 +50,7 @@ except ImportError as e:
     # Check RAG dependencies as fallback
     try:
         from langchain_openai import OpenAIEmbeddings
+        from langchain_community.retrievers import BM25Retriever
         print("RAG dependencies are available")
     except ImportError:
         print("Installing RAG dependencies...")
@@ -59,8 +60,10 @@ except ImportError as e:
             "langchain-google-genai>=2.0.0",
             "langchain-chroma>=0.1.0",
             "langchain-text-splitters>=0.3.0",
+            "langchain-community>=0.3.0",  # For BM25Retriever and EnsembleRetriever
             "chromadb>=0.5.0",
-            "sentence-transformers>=3.0.0"
+            "sentence-transformers>=3.0.0",
+            "rank-bm25>=0.2.0"  # Required for BM25Retriever
         ]
         for package in rag_packages:
             subprocess.run([sys.executable, "-m", "pip", "install", "-q", package], check=False)
