@@ -20,11 +20,17 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 
 ### Document Conversion
 - Convert PDFs, Office documents, images, and more to Markdown
+- **🆕 Multi-Document Processing**: Process up to 5 files simultaneously (20MB combined)
 - Multiple parser options:
   - MarkItDown: For comprehensive document conversion
   - Docling: For advanced PDF understanding with table structure recognition
   - GOT-OCR: For image-based OCR with LaTeX support
-  - Gemini Flash: For AI-powered text extraction
+  - Gemini Flash: For AI-powered text extraction with **advanced multi-document capabilities**
+- **🆕 Intelligent Processing Types**:
+  - **Combined**: Merge documents into unified content with duplicate removal
+  - **Individual**: Separate sections per document with clear organization
+  - **Summary**: Executive overview + detailed analysis of all documents
+  - **Comparison**: Cross-document analysis with similarities/differences tables
 - Download converted documents as Markdown files
 
 ### 🤖 RAG Chat with Documents
@@ -40,34 +46,68 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 
 ### User Interface
 - **Dual-tab interface**: Document Converter + Chat
+- **🆕 Unified File Input**: Single interface handles both single and multiple file uploads
+- **🆕 Dynamic Processing Options**: Multi-document processing type selector appears automatically
+- **🆕 Real-time Validation**: Live feedback on file count, size limits, and processing mode
 - **Real-time status monitoring** for RAG system with environment detection
 - **Auto-ingestion** of converted documents into chat system
 - **Enhanced status display**: Shows vector store document count, chat history files, and environment type
 - **Data management controls**: Clear All Data button with comprehensive feedback
 - **Filename preservation**: Downloaded files maintain original names (e.g., "example data.pdf" → "example data.md")
+- **🆕 Smart Output Naming**: Batch processing creates descriptive filenames (e.g., "Combined_3_Documents_20240125.md")
 - Clean, responsive UI with modern styling
 
-## Using MarkItDown & Docling
+## Supported Libraries
 
-This app integrates multiple powerful document conversion libraries:
+**MarkItDown** ([Microsoft](https://github.com/microsoft/markitdown)): PDF, Office docs, images, audio, HTML, ZIP files, YouTube URLs, EPubs, and more.
 
-### MarkItDown
-[Microsoft's MarkItDown](https://github.com/microsoft/markitdown) library supports a wide range of file formats:
+**Docling** ([IBM](https://github.com/DS4SD/docling)): Advanced PDF understanding with table structure recognition, multiple OCR engines, and layout analysis.
 
-### Docling
-[IBM's Docling](https://github.com/DS4SD/docling) provides advanced document understanding with:
-- **Advanced PDF parsing** with layout understanding, reading order, and table structure recognition
-- **Multiple OCR engines** including EasyOCR and Tesseract
-- **Document format support**: PDF, DOCX, XLSX, PPTX, HTML, Images (PNG, JPG, TIFF, BMP, WEBP), CSV
-- **Local execution** for sensitive data processing
-- **Formula and code understanding** with enrichment features
-- **Picture classification** and description capabilities
+**Gemini Flash** ([Google](https://deepmind.google/technologies/gemini/)): AI-powered document understanding with **advanced multi-document processing capabilities**, cross-format analysis, and intelligent content synthesis.
 
-### MarkItDown Features
-- PDF, PowerPoint (PPTX), Word (DOCX), Excel (XLSX)
-- Images (JPG, PNG), Audio files (with transcription)
-- HTML, Text-based formats (CSV, JSON, XML)
-- ZIP files, YouTube URLs, EPubs, and more!
+## 🚀 Multi-Document Processing
+
+### **What makes this special?**
+Markit v2 introduces **industry-leading multi-document processing** powered by Google's Gemini Flash 2.5, enabling intelligent analysis across multiple documents simultaneously.
+
+### **Key Capabilities:**
+- **📊 Cross-Document Analysis**: Compare and contrast information across different files
+- **🔄 Smart Duplicate Removal**: Intelligently merges overlapping content while preserving unique insights
+- **📋 Format Intelligence**: Handles mixed file types (PDF + images, Word + Excel, etc.) seamlessly
+- **🧠 Contextual Understanding**: Recognizes relationships and patterns across document boundaries
+- **⚡ Single API Call Processing**: Efficient batch processing using Gemini's native multi-document support
+
+### **Processing Types Explained:**
+
+#### 🔗 **Combined Processing**
+- **Purpose**: Create one unified, cohesive document from multiple sources
+- **Best for**: Related documents that should be read as one complete resource
+- **Intelligence**: Removes redundant information while preserving all critical content
+- **Example**: Merge project proposal + budget + timeline into one comprehensive document
+
+#### 📑 **Individual Processing**  
+- **Purpose**: Convert each document separately but organize them in one output
+- **Best for**: Different documents you want in one place for easy reference
+- **Intelligence**: Maintains original structure while creating clear organization
+- **Example**: Meeting agenda + presentation + notes → organized sections
+
+#### 📈 **Summary Processing**
+- **Purpose**: Executive overview + detailed analysis
+- **Best for**: Complex document sets needing high-level insights
+- **Intelligence**: Cross-document pattern recognition and key insight extraction
+- **Example**: Research papers → executive summary + detailed analysis of each paper
+
+#### ⚖️ **Comparison Processing**
+- **Purpose**: Analyze differences, similarities, and relationships
+- **Best for**: Multiple proposals, document versions, or conflicting sources
+- **Intelligence**: Creates comparison tables and identifies discrepancies/alignments
+- **Example**: Contract versions → side-by-side analysis with change identification
+
+### **Technical Advantages:**
+- **Native Multimodal Support**: Processes text + images in same workflow
+- **Advanced Reasoning**: Understands context and relationships between documents
+- **Efficient Processing**: Single Gemini API call vs. multiple individual calls
+- **Format Agnostic**: Works across all supported file types seamlessly
 
 ## Environment Variables
 
@@ -81,6 +121,8 @@ The application uses centralized configuration management. You can enhance funct
 ### ⚙️ **Configuration Options:**
 - `DEBUG`: Set to `true` for debug mode with verbose logging
 - `MAX_FILE_SIZE`: Maximum file size in bytes (default: 10MB)
+- `MAX_BATCH_FILES`: Maximum files for multi-document processing (default: 5)
+- `MAX_BATCH_SIZE`: Maximum combined size for batch processing (default: 20MB)
 - `TEMP_DIR`: Directory for temporary files (default: ./temp)
 - `TESSERACT_PATH`: Custom path to Tesseract executable
 - `TESSDATA_PATH`: Path to Tesseract language data
@@ -118,15 +160,40 @@ The application uses centralized configuration management. You can enhance funct
 ## Usage
 
 ### Document Conversion
+
+#### 📄 **Single Document Processing**
 1. Go to the **"Document Converter"** tab
-2. Select a file to upload
+2. Upload a single file
 3. Choose your preferred parser:
    - **"MarkItDown"** for comprehensive document conversion
    - **"Docling"** for advanced PDF understanding and table extraction
+   - **"Gemini Flash"** for AI-powered text extraction
 4. Select an OCR method based on your chosen parser
 5. Click "Convert"
 6. View the Markdown output and download the converted file
-7. **Documents are automatically added to the RAG system** for chat functionality
+
+#### 📂 **Multi-Document Processing** (NEW!)
+1. Go to the **"Document Converter"** tab
+2. Upload **2-5 files** (up to 20MB combined)
+3. **Processing type selector appears automatically**
+4. Choose your processing type:
+   - **Combined**: Merge all documents into unified content with smart duplicate removal
+   - **Individual**: Keep documents separate with clear section headers
+   - **Summary**: Executive overview + detailed analysis of each document
+   - **Comparison**: Side-by-side analysis with similarities/differences tables
+5. Choose your preferred parser (recommend **Gemini Flash** for best multi-document results)
+6. Click "Convert"
+7. Get intelligent cross-document analysis and download enhanced output
+
+#### 💡 **Multi-Document Tips**
+- **Mixed file types work great**: Upload PDF + images, Word docs + PDFs, etc.
+- **Gemini Flash excels at**: Cross-document reasoning, duplicate detection, and format analysis
+- **Perfect for**: Comparing document versions, analyzing related reports, consolidating research
+- **Real-time validation**: UI shows file count, size limits, and processing mode
+
+#### 🤖 **RAG Integration**
+- **All converted documents are automatically added to the RAG system** for chat functionality
+- Multi-document processing creates richer context for chat interactions
 
 ### 🤖 Chat with Documents
 1. Go to the **"Chat with Documents"** tab
@@ -165,53 +232,29 @@ The application uses centralized configuration management. You can enhance funct
    # For local development (faster startup)
    python run_app.py
    
-   # For testing with clean data (clears chat history and vector store)
+   # For testing with clean data
    python run_app.py --clear-data-and-run
    
-   # To only clear data without running the app
-   python run_app.py --clear-data
+   # Show all available options
+   python run_app.py --help
    ```
 
-### 🧹 **Data Management for Testing:**
-For local development and testing, you can easily clear all stored data:
+### 🧹 **Data Management:**
 
-```bash
-# Clear all data and exit (useful for quick cleanup)
-python run_app.py --clear-data
+**Two ways to clear data:**
 
-# Clear all data then run the app (useful for fresh testing)
-python run_app.py --clear-data-and-run
+1. **Command-line** (for development):
+   - `python run_app.py --clear-data-and-run` - Clear data then start app
+   - `python run_app.py --clear-data` - Clear data and exit
 
-# Show all available options
-python run_app.py --help
-```
+2. **In-app UI** (for users):
+   - Go to "Chat with Documents" tab → Click "🗑️ Clear All Data" button
+   - Automatically detects environment (local vs HF Space)
+   - Provides detailed feedback and starts new session
 
 **What gets cleared:**
-- `data/chat_history/*` - All saved chat sessions
+- `data/chat_history/*` - All saved chat sessions  
 - `data/vector_store/*` - All document embeddings and vector database
-
-This is particularly useful when:
-- Testing new RAG features with fresh data
-- Clearing old chat sessions and documents
-- Resetting the system to a clean state
-- Debugging document ingestion issues
-
-### 🗑️ **In-App Data Clearing:**
-In addition to command-line data clearing, you can also clear data directly from the web interface:
-
-1. Go to the **"Chat with Documents"** tab
-2. Click the **"🗑️ Clear All Data"** button in the control panel
-3. All vector store documents and chat history will be cleared
-4. A new chat session will automatically start
-5. The status panel will update to reflect the cleared state
-
-**Features of in-app clearing:**
-- **Environment Detection**: Automatically works in both local and HF Space environments
-- **Comprehensive Clearing**: Removes both vector store documents and chat history files
-- **Smart Path Resolution**: Uses `/tmp/data/*` for HF Spaces, `./data/*` for local development
-- **User Feedback**: Shows detailed results of what was cleared
-- **Auto-Session Reset**: Starts fresh chat session after clearing
-- **Safe Operation**: Handles errors gracefully and provides status updates
 
 ### 🧪 **Development Features:**
 - **Automatic Environment Setup**: Dependencies are checked and installed automatically
@@ -225,191 +268,14 @@ In addition to command-line data clearing, you can also clear data directly from
 - [GOT-OCR](https://github.com/stepfun-ai/GOT-OCR-2.0) for image-based OCR
 - [Gradio](https://gradio.app/) for the UI framework
 
-# Markit: Document to Markdown Converter
-
-[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/Ansemin101/Markit_v2)
+---
 
 **Author: Anse Min** | [GitHub](https://github.com/ansemin) | [LinkedIn](https://www.linkedin.com/in/ansemin/)
 
-## Project Links
-- **GitHub Repository**: [github.com/ansemin/Markit_v2](https://github.com/ansemin/Markit_v2)
-- **Hugging Face Space**: [huggingface.co/spaces/Ansemin101/Markit_v2](https://huggingface.co/spaces/Ansemin101/Markit_v2)
+**Project Links:**
+- [GitHub Repository](https://github.com/ansemin/Markit_v2)
+- [Hugging Face Space](https://huggingface.co/spaces/Ansemin101/Markit_v2)
 
-## Overview
-Markit is a powerful tool that converts various document formats (PDF, DOCX, images, etc.) to Markdown format. It uses different parsing engines and OCR methods to extract text from documents and convert them to clean, readable Markdown formats.
-
-## Key Features
-- **Multiple Document Formats**: Convert PDFs, Word documents, images, and other document formats
-- **Versatile Output Formats**: Export to Markdown, JSON, plain text, or document tags format
-- **Advanced Parsing Engines**:
-  - **MarkItDown**: Comprehensive document conversion (PDFs, Office docs, images, audio, etc.)
-  - **Docling**: Advanced PDF understanding with table structure, layout analysis, and multiple OCR engines
-  - **Gemini Flash**: AI-powered conversion using Google's Gemini API
-  - **GOT-OCR**: State-of-the-art OCR model for images (JPG/PNG only) with plain text and formatted text options
-  - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model for image-to-text conversion
-- **OCR Integration**: Extract text from images and scanned documents using Tesseract OCR
-- **Interactive UI**: User-friendly Gradio interface with page navigation for large documents
-- **AI-Powered Chat**: Interact with your documents using AI to ask questions about content
-- **ZeroGPU Support**: Optimized for Hugging Face Spaces with Stateless GPU environments
-
-## System Architecture
-
-The application is built with a clean, layered architecture following modern software engineering principles:
-
-### 🏗️ **Core Architecture Components:**
-- **Entry Point** (`app.py`): HF Spaces-compatible application launcher with environment setup
-- **Configuration Layer** (`src/core/config.py`): Centralized configuration management with validation
-- **Service Layer** (`src/services/`): Business logic for document processing and external services
-- **Core Engine** (`src/core/`): Document conversion workflows and utilities
-- **Parser Registry** (`src/parsers/`): Extensible parser system with standardized interfaces
-- **UI Layer** (`src/ui/`): Gradio-based web interface with enhanced error handling
-
-### 🎯 **Key Architectural Features:**
-- **Separation of Concerns**: Clean boundaries between UI, business logic, and core utilities
-- **Centralized Configuration**: All settings, API keys, and validation in one place
-- **Custom Exception Hierarchy**: Proper error handling with user-friendly messages
-- **Plugin Architecture**: Easy addition of new document parsers
-- **HF Spaces Optimized**: Maintains compatibility with Hugging Face deployment requirements
-
-## Installation
-
-### For Local Development
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Install Tesseract OCR (required for OCR functionality):
-   - Windows: Download and install from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
-   - Linux: `sudo apt-get install tesseract-ocr libtesseract-dev`
-   - macOS: `brew install tesseract`
-
-4. Run the application:
-   ```bash
-   python app.py
-   ```
-
-### API Keys Setup
-
-#### Gemini Flash Parser
-To use the Gemini Flash parser, you need to:
-1. Install the Google Generative AI client: `pip install google-genai`
-2. Set the API key environment variable:
-   ```bash
-   # On Windows
-   set GOOGLE_API_KEY=your_api_key_here
-   
-   # On Linux/Mac
-   export GOOGLE_API_KEY=your_api_key_here
-   ```
-3. Alternatively, create a `.env` file in the project root with:
-   ```
-   GOOGLE_API_KEY=your_api_key_here
-   ```
-4. Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-
-#### GOT-OCR Parser
-The GOT-OCR parser requires:
-1. CUDA-capable GPU with sufficient memory
-2. The following dependencies will be installed automatically:
-   ```bash
-   torch
-   torchvision
-   git+https://github.com/huggingface/transformers.git@main  # Latest transformers from GitHub
-   accelerate
-   verovio
-   numpy==1.26.3  # Specific version required
-   opencv-python
-   ```
-3. Note that GOT-OCR only supports JPG and PNG image formats
-4. In HF Spaces, the integration with ZeroGPU is automatic and optimized for Stateless GPU environments
-
-## Deploying to Hugging Face Spaces
-
-### Environment Configuration
-1. Go to your Space settings: `https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME/settings`
-2. Add the following repository secrets:
-   - Name: `GOOGLE_API_KEY`
-   - Value: Your Gemini API key
-
-### Space Configuration
-Ensure your Hugging Face Space configuration includes:
-```yaml
-build:
-  dockerfile: Dockerfile
-  python_version: "3.10" 
-  system_packages:
-    - "tesseract-ocr"
-    - "libtesseract-dev"
-```
-
-## How to Use
-
-### Document Conversion
-1. Upload your document using the file uploader
-2. Select a parser provider:
-   - **MarkItDown**: Best for comprehensive document conversion (supports PDFs, Office docs, images, audio, etc.)
-   - **Docling**: Best for advanced PDF understanding with table structure recognition and layout analysis
-   - **Gemini Flash**: Best for AI-powered conversions (requires API key)
-   - **GOT-OCR**: Best for high-quality OCR on images (JPG/PNG only)
-   - **Mistral OCR**: Advanced OCR using Mistral's Pixtral model (requires API key)
-3. Choose an OCR option based on your selected parser:
-   - **None**: No OCR processing (for documents with selectable text)
-   - **Tesseract**: Basic OCR using Tesseract
-   - **Advanced**: Enhanced OCR with layout preservation (available with specific parsers)
-   - **Plain Text**: For GOT-OCR, extracts raw text without formatting
-   - **Formatted Text**: For GOT-OCR, preserves formatting and converts to Markdown
-4. Select your desired output format:
-   - **Markdown**: Clean, readable markdown format
-   - **JSON**: Structured data representation
-   - **Text**: Plain text extraction
-   - **Document Tags**: XML-like structure tags
-5. Click "Convert" to process your document
-6. Navigate through pages using the navigation buttons for multi-page documents
-7. Download the converted content in your selected format
-
-## Configuration & Error Handling
-
-### 🔧 **Automatic Configuration:**
-The application includes intelligent configuration management that:
-- Validates API keys and reports availability at startup
-- Checks for required dependencies and installs them automatically
-- Provides helpful warnings for missing optional components
-- Reports which parsers are available based on current configuration
-
-### 🛡️ **Enhanced Error Handling:**
-- **User-Friendly Messages**: Clear error descriptions instead of technical stack traces
-- **File Validation**: Automatic checking of file size and format compatibility
-- **Parser Availability**: Real-time detection of which parsers can be used
-- **Graceful Degradation**: Application continues working even if some parsers are unavailable
-
-## Troubleshooting
-
-### OCR Issues
-- Ensure Tesseract is properly installed and in your system PATH
-- Check the TESSDATA_PREFIX environment variable is set correctly
-- Verify language files are available in the tessdata directory
-
-### Gemini Flash Parser Issues
-- Confirm your API key is set correctly as an environment variable
-- Check for API usage limits or restrictions
-- Verify the document format is supported by the Gemini API
-
-### GOT-OCR Parser Issues
-- Ensure you have a CUDA-capable GPU with sufficient memory
-- Verify that all required dependencies are installed correctly
-- Remember that GOT-OCR only supports JPG and PNG image formats
-- If you encounter CUDA out-of-memory errors, try using a smaller image
-- In Hugging Face Spaces with Stateless GPU, ensure the `spaces` module is imported before any CUDA initialization
-- If you see errors about "CUDA must not be initialized in the main process", verify the import order in your app.py
-- If you encounter "cannot pickle '_thread.lock' object" errors, this indicates thread locks are being passed to the GPU function
-- The GOT-OCR parser has been optimized for ZeroGPU in Stateless GPU environments with proper serialization handling
-- For local development, the parser will fall back to CPU processing if GPU is not available
-
-### General Issues
-- Check the console logs for error messages
-- Ensure all dependencies are installed correctly
-- For large documents, try processing fewer pages at a time
 
 ## Development Guide
 
@@ -450,7 +316,7 @@ markit_v2/
 │   │   ├── docling_parser.py # 🆕 Docling parser with advanced PDF understanding
 │   │   ├── got_ocr_parser.py # GOT-OCR parser for images
 │   │   ├── mistral_ocr_parser.py # 🆕 Mistral OCR parser
-│   │   └── gemini_flash_parser.py # Gemini Flash parser
+│   │   └── gemini_flash_parser.py # 🆕 Enhanced Gemini Flash parser with multi-document processing
 │   ├── rag/                # 🆕 RAG (Retrieval-Augmented Generation) system
 │   │   ├── __init__.py     # Package initialization
 │   │   ├── embeddings.py   # OpenAI embedding model management

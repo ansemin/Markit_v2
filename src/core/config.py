@@ -139,11 +139,20 @@ class AppConfig:
     allowed_extensions: tuple = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".tex", ".xlsx", ".docx", ".pptx", ".html", ".xhtml", ".md", ".csv")
     temp_dir: str = "./temp"
     
+    # Multi-document batch processing settings
+    max_batch_files: int = 5
+    max_batch_size: int = 20 * 1024 * 1024  # 20MB combined
+    batch_processing_types: tuple = ("combined", "individual", "summary", "comparison")
+    
     def __post_init__(self):
         """Load application configuration from environment variables."""
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
         self.max_file_size = int(os.getenv("MAX_FILE_SIZE", self.max_file_size))
         self.temp_dir = os.getenv("TEMP_DIR", self.temp_dir)
+        
+        # Load batch processing configuration
+        self.max_batch_files = int(os.getenv("MAX_BATCH_FILES", self.max_batch_files))
+        self.max_batch_size = int(os.getenv("MAX_BATCH_SIZE", self.max_batch_size))
 
 
 class Config:
