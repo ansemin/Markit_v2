@@ -75,16 +75,18 @@ class DocumentIngestionService:
             logger.error(f"Error deleting existing document: {e}")
             return False
     
-    def ingest_markdown_content(self, 
-                              markdown_content: str, 
-                              source_path: Optional[str] = None,
-                              metadata: Optional[Dict[str, Any]] = None,
-                              original_file_content: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
+    def ingest_text_content(self, 
+                           text_content: str, 
+                           content_type: str = "markdown",
+                           source_path: Optional[str] = None,
+                           metadata: Optional[Dict[str, Any]] = None,
+                           original_file_content: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Ingest markdown content into the RAG system.
+        Ingest text content (markdown or LaTeX) into the RAG system.
         
         Args:
-            markdown_content: The markdown content to ingest
+            text_content: The text content to ingest (markdown or LaTeX)
+            content_type: Type of content ("markdown" or "latex")
             source_path: Optional source path/filename
             metadata: Optional additional metadata
             original_file_content: Original file content for hash calculation
@@ -93,11 +95,11 @@ class DocumentIngestionService:
             Tuple of (success, message, ingestion_stats)
         """
         try:
-            if not markdown_content or not markdown_content.strip():
+            if not text_content or not text_content.strip():
                 return False, "No content provided for ingestion", {}
             
-            # Create file hash using original content if available, otherwise use markdown content
-            file_content_for_hash = original_file_content or markdown_content
+            # Create file hash using original content if available, otherwise use text content
+            file_content_for_hash = original_file_content or text_content
             file_hash = self.create_file_hash(file_content_for_hash)
             
             # Check for duplicates in vector store
@@ -115,16 +117,16 @@ class DocumentIngestionService:
             # Prepare document metadata with file hash
             doc_metadata = self.prepare_document_metadata(
                 source_path=source_path,
-                doc_type="markdown",
+                doc_type=content_type,  # Use content_type instead of hardcoded "markdown"
                 additional_metadata=metadata
             )
             doc_metadata["file_hash"] = file_hash
-            doc_metadata["content_length"] = len(markdown_content)
+            doc_metadata["content_length"] = len(text_content)
             doc_metadata["upload_timestamp"] = datetime.now().isoformat()
             
-            # Chunk the document using markdown-aware chunking
-            logger.info(f"Chunking document: {file_hash}")
-            chunks = document_chunker.chunk_document(markdown_content, doc_metadata)
+            # Chunk the document using text-aware chunking
+            logger.info(f"Chunking {content_type} document: {file_hash}")
+            chunks = document_chunker.chunk_document(text_content, doc_metadata)
             
             if not chunks:
                 return False, "Failed to create document chunks", {}
@@ -142,7 +144,7 @@ class DocumentIngestionService:
                 "file_hash": file_hash,
                 "total_chunks": len(chunks),
                 "document_ids": doc_ids,
-                "content_length": len(markdown_content),
+                "content_length": len(text_content),
                 "has_tables": any(chunk.metadata.get("has_table", False) for chunk in chunks),
                 "has_code": any(chunk.metadata.get("has_code", False) for chunk in chunks),
                 "processed_at": datetime.now().isoformat(),
@@ -159,6 +161,22 @@ class DocumentIngestionService:
             error_msg = f"Error during document ingestion: {str(e)}"
             logger.error(error_msg)
             return False, error_msg, {"status": "error", "error": str(e)}
+    
+    def ingest_markdown_content(self, 
+                              markdown_content: str, 
+                              source_path: Optional[str] = None,
+                              metadata: Optional[Dict[str, Any]] = None,
+                              original_file_content: Optional[str] = None) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Backward compatibility method for ingesting markdown content.
+        """
+        return self.ingest_text_content(
+            text_content=markdown_content,
+            content_type="markdown",
+            source_path=source_path,
+            metadata=metadata,
+            original_file_content=original_file_content
+        )
     
     def ingest_from_conversion_result(self, conversion_result: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
         """
@@ -189,9 +207,13 @@ class DocumentIngestionService:
                 "conversion_time": conversion_result.get("conversion_time", 0)
             }
             
-            # Ingest the markdown content with original file content for proper hashing
-            return self.ingest_markdown_content(
-                markdown_content=markdown_content,
+            # Determine content type based on conversion method
+            content_type = "latex" if "GOT-OCR" in conversion_method else "markdown"
+            
+            # Ingest the content with original file content for proper hashing
+            return self.ingest_text_content(
+                text_content=markdown_content,
+                content_type=content_type,
                 source_path=original_filename,
                 metadata=additional_metadata,
                 original_file_content=original_file_content
