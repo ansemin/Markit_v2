@@ -85,7 +85,7 @@ class GotOcrParser(DocumentParser):
             **kwargs: Additional arguments to pass to the model
             
         Returns:
-            Extracted text from the image, converted to Markdown if formatted
+            Extracted text from the image as raw LaTeX
         """
         # Verify dependencies are installed without initializing CUDA
         if not self._check_dependencies():
@@ -131,14 +131,22 @@ class GotOcrParser(DocumentParser):
                 image_path_str = str(file_path)
                 
                 # Call the wrapper function that handles ZeroGPU safely
-                return self._safe_gpu_process(image_path_str, use_format, **safe_kwargs)
+                result = self._safe_gpu_process(image_path_str, use_format, **safe_kwargs)
             else:
                 # Fallback for environments without spaces
-                return self._process_image_without_gpu(
+                result = self._process_image_without_gpu(
                     str(file_path), 
                     use_format=use_format,
                     **safe_kwargs
                 )
+            
+            # Add a small delay to replace LLM conversion time
+            import time
+            time.sleep(2)  # 2 second delay to simulate processing time
+            
+            # Return raw LaTeX output (no LLM conversion)
+            logger.info("Returning raw LaTeX output (no LLM conversion)")
+            return result
             
         except Exception as e:
             logger.error(f"Error processing image with GOT-OCR: {str(e)}")
@@ -195,7 +203,7 @@ class GotOcrParser(DocumentParser):
         image = load_image(image_path)
         
         # Load processor and model
-        processor = AutoProcessor.from_pretrained(MODEL_NAME)
+        processor = AutoProcessor.from_pretrained(MODEL_NAME, use_fast=True)
         
         # Use CPU if in main process to avoid CUDA initialization issues
         device = "cpu"
@@ -285,7 +293,7 @@ class GotOcrParser(DocumentParser):
             logger.info(f"Loading GOT-OCR model from {MODEL_NAME} on {device}")
             
             # Load processor
-            processor = AutoProcessor.from_pretrained(MODEL_NAME)
+            processor = AutoProcessor.from_pretrained(MODEL_NAME, use_fast=True)
             
             # Load model
             model = AutoModelForImageTextToText.from_pretrained(

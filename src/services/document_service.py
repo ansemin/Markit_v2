@@ -94,9 +94,15 @@ class DocumentService:
         return temp_path
     
     def _process_latex_content(self, content: str, parser_name: str, ocr_method_name: str) -> str:
-        """Process LaTeX content for GOT-OCR formatted text."""
-        if (parser_name == "GOT-OCR (jpg,png only)" and 
-            ocr_method_name == "Formatted Text" and 
+        """Process LaTeX content - for GOT-OCR, return raw LaTeX without conversion."""
+        # For GOT-OCR, skip LLM conversion and return raw LaTeX
+        if parser_name == "GOT-OCR (jpg,png only)":
+            logging.info("GOT-OCR detected: returning raw LaTeX output (no LLM conversion)")
+            return content
+        
+        # For other parsers with LaTeX content, process as before
+        if (content and 
+            ("\\begin" in content or "\\end" in content or "$" in content) and 
             config.api.google_api_key):
             
             logging.info("Converting LaTeX output to Markdown using Gemini API")
@@ -106,6 +112,7 @@ class DocumentService:
                 raise ConversionError("Conversion cancelled before LaTeX conversion")
             
             try:
+                from src.core.latex_to_markdown_converter import convert_latex_to_markdown
                 markdown_content = convert_latex_to_markdown(content)
                 if markdown_content:
                     logging.info(f"LaTeX conversion completed in {time.time() - start_convert:.2f} seconds")
@@ -118,16 +125,21 @@ class DocumentService:
         
         return content
     
-    def _create_output_file(self, content: str, output_format: str, original_file_path: Optional[str] = None) -> str:
+    def _create_output_file(self, content: str, output_format: str, original_file_path: Optional[str] = None, parser_name: Optional[str] = None) -> str:
         """Create output file with proper extension and preserved filename."""
-        # Determine file extension
-        format_extensions = {
-            "markdown": ".md",
-            "json": ".json", 
-            "text": ".txt",
-            "document tags": ".doctags"
-        }
-        ext = format_extensions.get(output_format.lower(), ".txt")
+        # Determine file extension based on parser and format
+        if parser_name == "GOT-OCR (jpg,png only)":
+            # For GOT-OCR, use .tex extension
+            ext = ".tex"
+        else:
+            # For other parsers, use format-based extensions
+            format_extensions = {
+                "markdown": ".md",
+                "json": ".json", 
+                "text": ".txt",
+                "document tags": ".doctags"
+            }
+            ext = format_extensions.get(output_format.lower(), ".txt")
         
         if self._check_cancellation():
             raise ConversionError("Conversion cancelled before output file creation")
@@ -247,7 +259,7 @@ class DocumentService:
                 raise ConversionError("Conversion cancelled")
             
             # Create output file
-            output_path = self._create_output_file(content, output_format, file_path)
+            output_path = self._create_output_file(content, output_format, file_path, parser_name)
             
             return content, output_path
             
