@@ -24,7 +24,7 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 - Multiple parser options:
   - MarkItDown: For comprehensive document conversion
   - Docling: For advanced PDF understanding with table structure recognition + **multi-document processing**
-  - GOT-OCR: For image-based OCR with LaTeX support
+  - GOT-OCR: For image-based OCR with **native LaTeX output** and Mathpix rendering
   - Gemini Flash: For AI-powered text extraction with **advanced multi-document capabilities**
   - Mistral OCR: High-accuracy OCR for PDFs and images with optional *Document Understanding* mode + **multi-document processing**
 - **🆕 Intelligent Processing Types**:
@@ -42,7 +42,10 @@ A Hugging Face Space that converts various document formats to Markdown and lets
   - **BM25 Keyword Search**: Traditional keyword-based retrieval
   - **Hybrid Search**: Combines semantic + keyword search for best accuracy
 - **Intelligent document retrieval** using vector embeddings
-- **Markdown-aware chunking** that preserves tables and code blocks
+- **🆕 Smart Content-Aware Chunking**: 
+  - **Markdown chunking** that preserves tables and code blocks
+  - **LaTeX chunking** that preserves mathematical tables, environments, and structures
+  - **Automatic format detection** for optimal chunking strategy
 - **Streaming chat responses** for real-time interaction
 - **Chat history management** with session persistence
 - **Usage limits** to prevent abuse on public spaces
@@ -168,8 +171,10 @@ The application uses centralized configuration management. You can enhance funct
 - `VECTOR_STORE_PATH`: Path for vector database storage (default: ./data/vector_store)
 - `CHAT_HISTORY_PATH`: Path for chat history storage (default: ./data/chat_history)
 - `EMBEDDING_MODEL`: OpenAI embedding model (default: text-embedding-3-small)
-- `CHUNK_SIZE`: Document chunk size for RAG (default: 1000)
-- `CHUNK_OVERLAP`: Overlap between chunks (default: 200)
+- `CHUNK_SIZE`: Document chunk size for Markdown content (default: 1000)
+- `CHUNK_OVERLAP`: Overlap between chunks for Markdown (default: 200)
+- `LATEX_CHUNK_SIZE`: Document chunk size for LaTeX content (default: 1200)
+- `LATEX_CHUNK_OVERLAP`: Overlap between chunks for LaTeX (default: 150)
 - `MAX_MESSAGES_PER_SESSION`: Chat limit per session (default: 50)
 - `MAX_MESSAGES_PER_HOUR`: Chat limit per hour (default: 100)
 - `RETRIEVAL_K`: Number of documents to retrieve (default: 4)
@@ -199,7 +204,9 @@ The application uses centralized configuration management. You can enhance funct
    - **"Gemini Flash"** for AI-powered text extraction
 4. Select an OCR method based on your chosen parser
 5. Click "Convert"
-6. View the Markdown output and download the converted file
+6. **For GOT-OCR**: View the LaTeX output with **Mathpix rendering** for proper mathematical and tabular display
+7. **For other parsers**: View the Markdown output
+8. Download the converted file (.tex for GOT-OCR, .md for others)
 
 #### 📂 **Multi-Document Processing** (NEW!)
 1. Go to the **"Document Converter"** tab
@@ -319,10 +326,58 @@ The application uses centralized configuration management. You can enhance funct
 - **Enhanced Error Messages**: Detailed error reporting for debugging
 - **Centralized Logging**: Configurable logging levels and output formats
 
+## 📄 GOT-OCR LaTeX Processing
+
+Markit v2 features **advanced LaTeX processing** for GOT-OCR results, providing proper mathematical and tabular content handling:
+
+### **🎯 Key Features:**
+
+#### **1. Native LaTeX Output**
+- **No LLM conversion**: GOT-OCR returns raw LaTeX directly for maximum accuracy
+- **Preserves mathematical structures**: Complex formulas, tables, and equations remain intact
+- **.tex file output**: Save files in proper LaTeX format for external use
+
+#### **2. Mathpix Markdown Rendering**
+- **Professional display**: Uses Mathpix Markdown library (same as official GOT-OCR demo)
+- **Complex table support**: Renders `\begin{tabular}`, `\multirow`, `\multicolumn` properly
+- **Mathematical expressions**: Displays LaTeX math with proper formatting
+- **Base64 iframe embedding**: Secure, isolated rendering environment
+
+#### **3. RAG-Compatible LaTeX Chunking**
+- **LaTeX-aware chunker**: Specialized chunking preserves LaTeX structures
+- **Complete table preservation**: Entire `\begin{tabular}...\end{tabular}` blocks stay intact
+- **Environment detection**: Maintains `\begin{env}...\end{env}` pairs
+- **Intelligent separators**: Uses LaTeX commands (`\section`, `\title`) as break points
+
+#### **4. Enhanced Metadata**
+- **Content type tracking**: `content_type: "latex"` for proper handling
+- **Structure detection**: Identifies tables, environments, and mathematical content
+- **Auto-format detection**: GOT-OCR results automatically use LaTeX chunker
+
+### **🔧 Technical Implementation:**
+
+```javascript
+// Mathpix rendering (inspired by official GOT-OCR demo)
+const html = window.render(latexContent, {htmlTags: true});
+
+// LaTeX structure preservation
+\begin{tabular}{|l|c|c|}
+\hline Disability & Participants & Results \\
+\hline Blind & 5 & $34.5\%, n=1$ \\
+\end{tabular}
+```
+
+### **📊 Use Cases:**
+- **Research papers**: Mathematical formulas and data tables
+- **Scientific documents**: Complex equations and statistical data
+- **Financial reports**: Tabular data with calculations
+- **Academic content**: Mixed text, math, and structured data
+
 ## Credits
 
 - [MarkItDown](https://github.com/microsoft/markitdown) by Microsoft
 - [GOT-OCR](https://github.com/stepfun-ai/GOT-OCR-2.0) for image-based OCR
+- [Mathpix Markdown](https://github.com/Mathpix/mathpix-markdown-it) for LaTeX rendering
 - [Gradio](https://gradio.app/) for the UI framework
 
 ---
@@ -343,6 +398,7 @@ The system supports **four different retrieval methods** for optimal document se
 - **Best for**: General questions and semantic understanding
 - **Use case**: "What is the main topic of this document?"
 - **Configuration**: `{'k': 4, 'search_type': 'similarity'}`
+- **Chunking**: Uses content-aware chunking (Markdown or LaTeX) for optimal structure preservation
 
 ### **2. 🔀 MMR (Maximal Marginal Relevance)**  
 - **How it works**: Balances relevance with result diversity to reduce redundancy
@@ -469,7 +525,12 @@ markit_v2/
 
 ### 🧠 **RAG System Architecture:**
 - **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
-- **Markdown-Aware Chunking** (`src/rag/chunking.py`): Preserves tables and code blocks as whole units
+- **🆕 Smart Content-Aware Chunking** (`src/rag/chunking.py`): 
+  - **Unified chunker** supporting both Markdown and LaTeX content
+  - **Markdown chunking**: Preserves tables and code blocks as whole units
+  - **LaTeX chunking**: Preserves `\begin{tabular}`, mathematical environments, and LaTeX structures
+  - **Automatic format detection**: GOT-OCR results → LaTeX chunker, others → Markdown chunker
+  - **Enhanced metadata**: Content type tracking and structure detection
 - **🆕 Advanced Vector Store** (`src/rag/vector_store.py`): Multi-strategy retrieval system with:
   - **Similarity Search**: Traditional semantic retrieval using embeddings
   - **MMR Support**: Maximal Marginal Relevance for diverse results
