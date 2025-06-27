@@ -41,7 +41,7 @@ class GotOcrParser(DocumentParser):
     
     @classmethod
     def get_name(cls) -> str:
-        return "GOT-OCR (jpg,png only)"
+        return "GOT-OCR"
     
     @classmethod
     def get_supported_ocr_methods(cls) -> List[Dict[str, Any]]:

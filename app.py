@@ -35,7 +35,7 @@ except ImportError as e:
     
     try:
         from markitdown import MarkItDown
-        print("MarkItDown is available")
+        print("MarkItDown is available (using Gemini for image processing)")
     except ImportError:
         print("Installing MarkItDown...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "markitdown[all]"], check=False)

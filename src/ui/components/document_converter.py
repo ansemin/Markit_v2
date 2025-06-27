@@ -220,7 +220,7 @@ def create_document_converter_tab():
             files_input = gr.Files(
                 label="Upload Document(s) - Single file or up to 5 files (20MB max combined)",
                 file_count="multiple",
-                file_types=[".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".txt", ".md", ".html", ".htm"]
+                file_types=[".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".txt", ".md", ".html", ".htm", ".csv"]
             )
             
             # Processing type selector (visible only for multiple files)

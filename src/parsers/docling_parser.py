@@ -132,7 +132,7 @@ class DoclingParser(DocumentParser):
     
     @classmethod
     def get_name(cls) -> str:
-        return "Docling (PDF, Images, DOCX, XLSX - Advanced PDF Understanding)"
+        return "Docling"
     
     @classmethod
     def get_supported_file_types(cls) -> Set[str]:
