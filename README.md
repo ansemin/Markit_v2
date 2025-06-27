@@ -498,9 +498,24 @@ markit_v2/
 │   │   ├── memory.py       # Chat history and session management
 │   │   ├── chat_service.py # RAG chat service with Gemini 2.5 Flash
 │   │   └── ingestion.py    # Document ingestion pipeline
-│   └── ui/                 # User interface layer
+│   └── ui/                 # 🆕 Modular user interface layer
 │       ├── __init__.py     # Package initialization
-│       └── ui.py           # 🆕 Gradio UI with three tabs (Converter + Chat + Query Ranker)
+│       ├── ui.py           # Main UI orchestrator (~60 lines)
+│       ├── components/     # UI components
+│       │   ├── __init__.py # Package initialization
+│       │   ├── document_converter.py # Document converter tab (~200 lines)
+│       │   ├── chat_interface.py # Chat interface tab (~180 lines)
+│       │   └── query_ranker.py # Query ranker tab (~200 lines)
+│       ├── formatters/     # Content formatting utilities
+│       │   ├── __init__.py # Package initialization
+│       │   └── content_formatters.py # Markdown/LaTeX formatters (~150 lines)
+│       ├── styles/         # UI styling
+│       │   ├── __init__.py # Package initialization
+│       │   └── ui_styles.py # CSS styles and themes (~800 lines)
+│       └── utils/          # UI utility functions
+│           ├── __init__.py # Package initialization
+│           ├── file_validation.py # File validation utilities (~80 lines)
+│           └── threading_utils.py # Threading utilities (~40 lines)
 ├── documents/              # Documentation and examples (gitignored)
 ├── tessdata/               # Tesseract OCR data (gitignored)
 └── tests/                  # 🆕 Test suite for Phase 1 RAG implementation
@@ -522,6 +537,11 @@ markit_v2/
 - **Centralized Logging**: Configurable logging system (`src/core/logging_config.py`)
 - **🆕 RAG System**: Complete RAG implementation with vector search and chat capabilities
 - **🆕 Query Ranker Interface**: Dedicated transparency tool for document search and ranking
+- **🆕 Modular UI Architecture**: Component-based UI with clear separation of concerns
+  - **UI Components**: Individual tab components for focused functionality
+  - **Content Formatters**: Specialized markdown and LaTeX rendering utilities
+  - **UI Styles**: Centralized CSS styling system with responsive design
+  - **UI Utils**: File validation and threading utilities for better code organization
 
 ### 🧠 **RAG System Architecture:**
 - **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
