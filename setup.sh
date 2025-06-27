@@ -30,8 +30,7 @@ echo "NumPy installed successfully"
 echo "Installing Python dependencies..."
 pip install -q -U pillow opencv-python
 pip install -q -U google-genai
-pip install -q -U openai>=1.1.0  # For LLM image description support
-# pip install -q -U latex2markdown - removed, now using Gemini API for LaTeX conversion
+# Note: Using Gemini Flash 2.5 for LLM image descriptions in MarkItDown instead of OpenAI
 echo "Python dependencies installed successfully"
 
 # Install GOT-OCR transformers dependencies
@@ -50,6 +49,7 @@ echo "Spaces module installed successfully"
 # Install markitdown with all optional dependencies
 echo "Installing MarkItDown with all dependencies..."
 pip install -q -U 'markitdown[all]'
+pip install -q -U ffmpeg-python  # For audio processing
 echo "MarkItDown installed successfully"
 
 # Install Docling for advanced PDF understanding

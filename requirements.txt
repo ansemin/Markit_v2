@@ -30,7 +30,8 @@ huggingface_hub[cli]>=0.19.0
 
 # MarkItDown and its dependencies
 markitdown[all]
-openai>=1.1.0  # For LLM image description support
+ffmpeg-python  # For audio processing in MarkItDown
+# Note: Using Gemini Flash 2.5 for LLM image descriptions instead of OpenAI
 
 # Docling dependencies
 docling
