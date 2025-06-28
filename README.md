@@ -14,19 +14,27 @@ hf_oauth: true
 
 # Document to Markdown Converter with RAG Chat
 
-A Hugging Face Space that converts various document formats to Markdown and lets you chat with your documents using RAG (Retrieval-Augmented Generation)!
+A powerful Hugging Face Space that converts various document formats to Markdown and enables intelligent chat with your documents using advanced RAG (Retrieval-Augmented Generation).
+
+## 🎯 System Overview
+
+<div align="center">
+<img src="img/Overall%20System%20Workflow%20(Essential).png" alt="Overall System Workflow" width="250">
+
+*Complete workflow from document upload to intelligent RAG chat interaction*
+</div>
 
 ## ✨ Key Features
 
 ### Document Conversion
 - Convert PDFs, Office documents, images, and more to Markdown
 - **🆕 Multi-Document Processing**: Process up to 5 files simultaneously (20MB combined)
-- Multiple parser options:
-  - MarkItDown: For comprehensive document conversion
-  - Docling: For advanced PDF understanding with table structure recognition + **multi-document processing**
-  - GOT-OCR: For image-based OCR with **native LaTeX output** and Mathpix rendering
-  - Gemini Flash: For AI-powered text extraction with **advanced multi-document capabilities**
-  - Mistral OCR: High-accuracy OCR for PDFs and images with optional *Document Understanding* mode + **multi-document processing**
+- **5 Powerful Parsers**:
+  - **Gemini Flash**: General Purpose + High Accuracy
+  - **Mistral OCR**: Fastest Processing
+  - **Docling**: Open Source
+  - **GOT-OCR**: Document to LaTeX + Open Source  
+  - **MarkItDown**: High Accuracy CSV/XML + Open Source
 - **🆕 Intelligent Processing Types**:
   - **Combined**: Merge documents into unified content with duplicate removal
   - **Individual**: Separate sections per document with clear organization
@@ -90,47 +98,22 @@ A Hugging Face Space that converts various document formats to Markdown and lets
 
 ## 🚀 Multi-Document Processing
 
-### **What makes this special?**
-Markit v2 introduces **industry-leading multi-document processing** with **three powerful parser options**: Gemini Flash (native multi-document AI), Mistral OCR (high-accuracy with Document Understanding), and Docling (advanced PDF analysis). All support intelligent cross-document analysis.
+<img src="img/Multi-Document%20Processing%20Types%20(Flagship%20Feature).png" alt="Multi-Document Processing Types" width="700">
+
+*Industry-leading multi-document processing with 4 intelligent processing types*
 
 ### **Key Capabilities:**
 - **📊 Cross-Document Analysis**: Compare and contrast information across different files
 - **🔄 Smart Duplicate Removal**: Intelligently merges overlapping content while preserving unique insights
 - **📋 Format Intelligence**: Handles mixed file types (PDF + images, Word + Excel, etc.) seamlessly
 - **🧠 Contextual Understanding**: Recognizes relationships and patterns across document boundaries
-- **⚡ Single API Call Processing**: Efficient batch processing using Gemini's native multi-document support
 
-### **Processing Types Explained:**
+### **Processing Types:**
 
-#### 🔗 **Combined Processing**
-- **Purpose**: Create one unified, cohesive document from multiple sources
-- **Best for**: Related documents that should be read as one complete resource
-- **Intelligence**: Removes redundant information while preserving all critical content
-- **Example**: Merge project proposal + budget + timeline into one comprehensive document
-
-#### 📑 **Individual Processing**  
-- **Purpose**: Convert each document separately but organize them in one output
-- **Best for**: Different documents you want in one place for easy reference
-- **Intelligence**: Maintains original structure while creating clear organization
-- **Example**: Meeting agenda + presentation + notes → organized sections
-
-#### 📈 **Summary Processing**
-- **Purpose**: Executive overview + detailed analysis
-- **Best for**: Complex document sets needing high-level insights
-- **Intelligence**: Cross-document pattern recognition and key insight extraction
-- **Example**: Research papers → executive summary + detailed analysis of each paper
-
-#### ⚖️ **Comparison Processing**
-- **Purpose**: Analyze differences, similarities, and relationships
-- **Best for**: Multiple proposals, document versions, or conflicting sources
-- **Intelligence**: Creates comparison tables and identifies discrepancies/alignments
-- **Example**: Contract versions → side-by-side analysis with change identification
-
-### **Technical Advantages:**
-- **Native Multimodal Support**: Processes text + images in same workflow
-- **Advanced Reasoning**: Understands context and relationships between documents
-- **Efficient Processing**: Single Gemini API call vs. multiple individual calls
-- **Format Agnostic**: Works across all supported file types seamlessly
+- **🔗 Combined**: Merge documents into unified content with duplicate removal
+- **📑 Individual**: Separate sections per document with clear organization  
+- **📈 Summary**: Executive overview + detailed analysis of all documents
+- **⚖️ Comparison**: Cross-document analysis with similarities/differences tables
 
 ## Environment Variables
 
@@ -191,82 +174,44 @@ The application uses centralized configuration management. You can enhance funct
 - `BM25_K1`: BM25 term frequency saturation parameter (default: 1.2)
 - `BM25_B`: BM25 field length normalization parameter (default: 0.75)
 
-## Usage
+## 📖 Usage Guide
+
+### 🎯 Parser Selection
+
+<img src="img/Parser%20Selection%20Guide%20(User-Friendly).png" alt="Parser Selection Guide" width="700">
+
+*Choose the right parser for your specific needs and document types*
 
 ### Document Conversion
 
 #### 📄 **Single Document Processing**
-1. Go to the **"Document Converter"** tab
-2. Upload a single file
-3. Choose your preferred parser:
-   - **"MarkItDown"** for comprehensive document conversion
-   - **"Docling"** for advanced PDF understanding and table extraction
-   - **"Gemini Flash"** for AI-powered text extraction
-4. Select an OCR method based on your chosen parser
-5. Click "Convert"
-6. **For GOT-OCR**: View the LaTeX output with **Mathpix rendering** for proper mathematical and tabular display
-7. **For other parsers**: View the Markdown output
-8. Download the converted file (.tex for GOT-OCR, .md for others)
+1. Upload a single file
+2. Choose your preferred parser
+3. Select an OCR method based on your chosen parser
+4. Click "Convert"
+5. Download the converted file (.tex for GOT-OCR, .md for others)
 
-#### 📂 **Multi-Document Processing** (NEW!)
-1. Go to the **"Document Converter"** tab
-2. Upload **2-5 files** (up to 20MB combined)
-3. **Processing type selector appears automatically**
-4. Choose your processing type:
-   - **Combined**: Merge all documents into unified content with smart duplicate removal
-   - **Individual**: Keep documents separate with clear section headers
-   - **Summary**: Executive overview + detailed analysis of each document
-   - **Comparison**: Side-by-side analysis with similarities/differences tables
-5. Choose your preferred parser:
-   - **Gemini Flash**: Best for advanced cross-document reasoning and native multi-document support
-   - **Mistral OCR**: Great for high-accuracy OCR with Document Understanding mode
-   - **Docling**: Excellent for PDF table structure + multi-document analysis
-6. Click "Convert"
-7. Get intelligent cross-document analysis and download enhanced output
+#### 📂 **Multi-Document Processing**
+1. Upload **2-5 files** (up to 20MB combined)
+2. Choose processing type: Combined, Individual, Summary, or Comparison
+3. Select your preferred parser
+4. Click "Convert" for intelligent cross-document analysis
 
-#### 💡 **Multi-Document Tips**
-- **Mixed file types work great**: Upload PDF + images, Word docs + PDFs, etc.
-- **Gemini Flash excels at**: Cross-document reasoning, duplicate detection, and format analysis
-- **Perfect for**: Comparing document versions, analyzing related reports, consolidating research
-- **Real-time validation**: UI shows file count, size limits, and processing mode
+### 🤖 RAG Chat & Query System
 
-#### 🤖 **RAG Integration**
-- **All converted documents are automatically added to the RAG system** for chat functionality
-- Multi-document processing creates richer context for chat interactions
+<img src="img/RAG%20Retrieval%20Strategies%20(Technical%20Highlight).png" alt="RAG Retrieval Strategies" width="700">
 
-### 🤖 Chat with Documents
-1. Go to the **"Chat with Documents"** tab
-2. Check the system status to ensure RAG components are ready
-3. **🆕 Choose your retrieval strategy** for optimal results:
-   - **Similarity**: Best for general semantic search
-   - **MMR**: Best for diverse, non-repetitive results
-   - **Hybrid**: Best overall accuracy (recommended)
-4. Ask questions about your converted documents
-5. Enjoy real-time streaming responses with document context
-6. Use "New Session" to start fresh conversations
-7. Use "🗑️ Clear All Data" to remove all documents and chat history
-8. Monitor your usage limits in the status panel
+*Advanced RAG system with 4 retrieval strategies for optimal document search*
 
-### 🔍 Query Ranker (NEW!)
-1. Go to the **"Query Ranker"** tab
-2. Check the system status to ensure documents are loaded
-3. **Enter your search query** in the search box
-4. **Choose your retrieval method**:
-   - **🎯 Similarity Search**: Semantic similarity with real scores
-   - **🔀 MMR (Diverse)**: Diverse results with reduced redundancy
-   - **🔍 BM25 (Keywords)**: Traditional keyword-based search
-   - **🔗 Hybrid (Recommended)**: Best overall accuracy combining semantic + keyword
-5. **Adjust result count** (1-10) using the slider
-6. **Review ranked results** with confidence levels and source information
-7. **Compare methods** by trying different retrieval strategies on the same query
-8. Use results to understand how your documents are chunked and ranked
+#### **Chat with Documents**
+1. Choose your retrieval strategy (Similarity, MMR, BM25, or Hybrid)
+2. Ask questions about your converted documents
+3. Get real-time streaming responses with document context
 
-#### 🔍 **Retrieval Strategy Guide:**
-- **For research papers**: Use MMR to get diverse perspectives
-- **For technical docs**: Use Hybrid for comprehensive coverage
-- **For specific facts**: Use Similarity for targeted results
-- **For broad topics**: Use Hybrid for balanced semantic + keyword matching
-- **For transparency**: Use Query Ranker to see exactly which chunks are being retrieved
+#### **Query Ranker**
+1. Enter search queries to explore document chunks
+2. Compare different retrieval methods
+3. View confidence scores and source information
 
 ## Local Development
 
@@ -389,203 +334,33 @@ const html = window.render(latexContent, {htmlTags: true});
 - [Hugging Face Space](https://huggingface.co/spaces/Ansemin101/Markit_v2)
 
 
-## 🔍 Advanced RAG Retrieval Strategies
+## 🔍 Retrieval Strategies
 
-The system supports **four different retrieval methods** for optimal document search and question answering:
+| Method | Best For | Accuracy |
+|--------|----------|----------|
+| **🎯 Similarity** | General semantic questions | Good |
+| **🔀 MMR** | Diverse perspectives | Good |
+| **🔍 BM25** | Exact keyword searches | Medium |
+| **🔗 Hybrid** | Most queries (recommended) | **Excellent** |
 
-### **1. 🎯 Similarity Search (Default)**
-- **How it works**: Semantic similarity using OpenAI embeddings
-- **Best for**: General questions and semantic understanding
-- **Use case**: "What is the main topic of this document?"
-- **Configuration**: `{'k': 4, 'search_type': 'similarity'}`
-- **Chunking**: Uses content-aware chunking (Markdown or LaTeX) for optimal structure preservation
+## 💻 Development
 
-### **2. 🔀 MMR (Maximal Marginal Relevance)**  
-- **How it works**: Balances relevance with result diversity to reduce redundancy
-- **Best for**: Research questions requiring diverse perspectives
-- **Use case**: "What are different approaches to transformer architecture?"
-- **Configuration**: `{'k': 4, 'fetch_k': 10, 'lambda_mult': 0.5}`
-- **Benefits**: Prevents repetitive results, ensures comprehensive coverage
+### Quick Start
+```bash
+# Clone repository
+git clone https://github.com/ansemin/Markit_v2
 
-### **3. 🔍 BM25 Keyword Search**
-- **How it works**: Traditional keyword-based search with TF-IDF scoring
-- **Best for**: Exact term matching and specific factual queries
-- **Use case**: "Find mentions of 'attention mechanism' in the documents"
-- **Configuration**: `{'k': 4}`
-- **Benefits**: Excellent for technical terms and specific concepts
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys
 
-### **4. 🔗 Hybrid Search (Recommended)**
-- **How it works**: Combines semantic embeddings + keyword search using ensemble weighting
-- **Best for**: Most queries - provides best overall accuracy
-- **Use case**: Any complex question benefiting from both semantic and keyword matching
-- **Configuration**: `{'k': 4, 'semantic_weight': 0.7, 'keyword_weight': 0.3}`
-- **Benefits**: **87.5% hit rate vs 79.2% for similarity-only** (based on LangChain research)
-
-### **🎯 Performance Comparison:**
-| Method | Accuracy | Diversity | Speed | Best Use Case |
-|--------|----------|-----------|-------|---------------|
-| Similarity | Good | Low | Fast | General semantic questions |
-| MMR | Good | High | Medium | Research requiring diverse viewpoints |
-| BM25 | Medium | Medium | Fast | Exact term/keyword searches |
-| **Hybrid** | **Excellent** | **High** | **Medium** | **Most questions (recommended)** |
-
-### **💡 Usage Examples:**
-
-```python
-# In your application code
-from src.rag.chat_service import rag_chat_service
-
-# Use hybrid search (recommended)
-response = rag_chat_service.chat_with_retrieval(
-    "How does attention work in transformers?",
-    retrieval_method="hybrid",
-    retrieval_config={'k': 4, 'semantic_weight': 0.8, 'keyword_weight': 0.2}
-)
-
-# Use MMR for diverse research results
-response = rag_chat_service.chat_with_retrieval(
-    "What are different transformer architectures?", 
-    retrieval_method="mmr",
-    retrieval_config={'k': 3, 'fetch_k': 10, 'lambda_mult': 0.6}
-)
+# Install dependencies & run
+pip install -r requirements.txt
+python app.py
 ```
 
-## Development Guide
-
-### Project Structure
-
-```
-markit_v2/
-├── app.py                  # Main application entry point (HF Spaces compatible)
-├── run_app.py              # 🆕 Lightweight app launcher for local development
-├── setup.sh                # Setup script
-├── build.sh                # Build script
-├── requirements.txt        # Python dependencies
-├── README.md               # Project documentation
-├── .env                    # Environment variables (local development)
-├── .gitignore              # Git ignore file
-├── .gitattributes          # Git attributes file
-├── src/                    # Source code
-│   ├── __init__.py         # Package initialization
-│   ├── main.py             # Application launcher
-│   ├── core/               # Core functionality and utilities
-│   │   ├── __init__.py     # Package initialization
-│   │   ├── config.py       # 🆕 Centralized configuration management (with RAG settings)
-│   │   ├── exceptions.py   # 🆕 Custom exception hierarchy
-│   │   ├── logging_config.py # 🆕 Centralized logging setup
-│   │   ├── environment.py  # 🆕 Environment setup and dependency management
-│   │   ├── converter.py    # Document conversion orchestrator (refactored)
-│   │   ├── parser_factory.py # Parser factory pattern
-│   │   └── latex_to_markdown_converter.py # LaTeX conversion utility
-│   ├── services/           # Business logic layer
-│   │   ├── __init__.py     # Package initialization
-│   │   ├── document_service.py # 🆕 Document processing service
-│   │   └── data_clearing_service.py # 🆕 Data management and clearing service
-│   ├── parsers/            # Parser implementations
-│   │   ├── __init__.py     # Package initialization
-│   │   ├── parser_interface.py # Enhanced parser interface
-│   │   ├── parser_registry.py # Parser registry pattern
-│   │   ├── markitdown_parser.py # MarkItDown parser (updated)
-│   │   ├── docling_parser.py # 🆕 Docling parser with advanced PDF understanding
-│   │   ├── got_ocr_parser.py # GOT-OCR parser for images
-│   │   ├── mistral_ocr_parser.py # 🆕 Mistral OCR parser
-│   │   └── gemini_flash_parser.py # 🆕 Enhanced Gemini Flash parser with multi-document processing
-│   ├── rag/                # 🆕 RAG (Retrieval-Augmented Generation) system
-│   │   ├── __init__.py     # Package initialization
-│   │   ├── embeddings.py   # OpenAI embedding model management
-│   │   ├── chunking.py     # Markdown-aware document chunking
-│   │   ├── vector_store.py # Chroma vector database management
-│   │   ├── memory.py       # Chat history and session management
-│   │   ├── chat_service.py # RAG chat service with Gemini 2.5 Flash
-│   │   └── ingestion.py    # Document ingestion pipeline
-│   └── ui/                 # 🆕 Modular user interface layer
-│       ├── __init__.py     # Package initialization
-│       ├── ui.py           # Main UI orchestrator (~60 lines)
-│       ├── components/     # UI components
-│       │   ├── __init__.py # Package initialization
-│       │   ├── document_converter.py # Document converter tab (~200 lines)
-│       │   ├── chat_interface.py # Chat interface tab (~180 lines)
-│       │   └── query_ranker.py # Query ranker tab (~200 lines)
-│       ├── formatters/     # Content formatting utilities
-│       │   ├── __init__.py # Package initialization
-│       │   └── content_formatters.py # Markdown/LaTeX formatters (~150 lines)
-│       ├── styles/         # UI styling
-│       │   ├── __init__.py # Package initialization
-│       │   └── ui_styles.py # CSS styles and themes (~800 lines)
-│       └── utils/          # UI utility functions
-│           ├── __init__.py # Package initialization
-│           ├── file_validation.py # File validation utilities (~80 lines)
-│           └── threading_utils.py # Threading utilities (~40 lines)
-├── documents/              # Documentation and examples (gitignored)
-├── tessdata/               # Tesseract OCR data (gitignored)
-└── tests/                  # 🆕 Test suite for Phase 1 RAG implementation
-    ├── __init__.py         # Package initialization
-    ├── README.md           # Test documentation and usage guide
-    ├── test_implementation_structure.py # Structure validation (no API keys)
-    ├── test_retrieval_methods.py # Full functionality testing
-    └── test_data_usage.py  # Data usage demonstration
-```
-
-### 🆕 **New Architecture Components:**
-- **Configuration Management**: Centralized API keys, model settings, and app configuration (`src/core/config.py`)
-- **Exception Hierarchy**: Proper error handling with specific exception types (`src/core/exceptions.py`)
-- **Service Layer**: Business logic separated from UI and core utilities (`src/services/document_service.py`)
-- **Data Management Service**: Comprehensive data clearing functionality (`src/services/data_clearing_service.py`)
-- **Environment Management**: Automated dependency checking and setup (`src/core/environment.py`)
-- **Enhanced Parser Interface**: Validation, metadata, and cancellation support
-- **Lightweight Launcher**: Quick development startup with `run_app.py`
-- **Centralized Logging**: Configurable logging system (`src/core/logging_config.py`)
-- **🆕 RAG System**: Complete RAG implementation with vector search and chat capabilities
-- **🆕 Query Ranker Interface**: Dedicated transparency tool for document search and ranking
-- **🆕 Modular UI Architecture**: Component-based UI with clear separation of concerns
-  - **UI Components**: Individual tab components for focused functionality
-  - **Content Formatters**: Specialized markdown and LaTeX rendering utilities
-  - **UI Styles**: Centralized CSS styling system with responsive design
-  - **UI Utils**: File validation and threading utilities for better code organization
-
-### 🧠 **RAG System Architecture:**
-- **Embeddings Management** (`src/rag/embeddings.py`): OpenAI text-embedding-3-small integration
-- **🆕 Smart Content-Aware Chunking** (`src/rag/chunking.py`): 
-  - **Unified chunker** supporting both Markdown and LaTeX content
-  - **Markdown chunking**: Preserves tables and code blocks as whole units
-  - **LaTeX chunking**: Preserves `\begin{tabular}`, mathematical environments, and LaTeX structures
-  - **Automatic format detection**: GOT-OCR results → LaTeX chunker, others → Markdown chunker
-  - **Enhanced metadata**: Content type tracking and structure detection
-- **🆕 Advanced Vector Store** (`src/rag/vector_store.py`): Multi-strategy retrieval system with:
-  - **Similarity Search**: Traditional semantic retrieval using embeddings
-  - **MMR Support**: Maximal Marginal Relevance for diverse results
-  - **BM25 Integration**: Keyword-based search with TF-IDF scoring
-  - **Hybrid Retrieval**: Ensemble combining semantic + keyword methods
-  - **Chroma database**: Persistent storage with deduplication
-- **Chat Memory** (`src/rag/memory.py`): Session management and conversation history
-- **🆕 Enhanced Chat Service** (`src/rag/chat_service.py`): Multi-method RAG with Gemini 2.5 Flash
-- **Document Ingestion** (`src/rag/ingestion.py`): Automated pipeline with intelligent duplicate handling
-- **Usage Limiting**: Anti-abuse measures for public deployment
-- **Auto-Ingestion**: Seamless integration with document conversion workflow
-
-### 🗑️ **Data Management & Deduplication:**
-- **File Hash-Based Deduplication**: Uses SHA-256 hashes of original file content to prevent duplicates
-- **Chroma Where Filter Integration**: Persistent duplicate detection using vector store metadata queries
-- **Automatic Document Replacement**: When same file is uploaded again, old version is replaced with new one
-- **Cross-Environment Data Clearing**: Works seamlessly in both local development and HF Space environments
-- **Environment-Aware Path Resolution**: Automatically detects and uses correct data paths (`./data/*` vs `/tmp/data/*`)
-- **Comprehensive Status Reporting**: Real-time display of vector store documents, chat history files, and environment type
-- **Safe Clearing Operations**: Graceful error handling with detailed feedback on clearing operations
-
-### ZeroGPU Integration Notes
-
-When developing for Hugging Face Spaces with Stateless GPU:
-
-1. Always import the `spaces` module before any CUDA initialization
-2. Place all CUDA operations inside functions decorated with `@spaces.GPU()`
-3. Ensure only picklable objects are passed to GPU-decorated functions
-4. Use wrapper functions to filter out unpicklable objects like thread locks
-5. For advanced use cases, consider implementing fallback mechanisms for serialization errors
-6. **Add `hf_oauth: true` to your Space's README.md metadata** to mitigate GPU quota limitations
-7. Sign in with your Hugging Face account when using the app to utilize your personal GPU quota
-8. For extensive GPU usage without quota limitations, a Hugging Face Pro subscription is required
-
-> **Note**: If you're implementing a Space with ZeroGPU on your own, you may encounter quota limitations ("GPU task aborted" errors). These can be mitigated by:
-> - Adding `hf_oauth: true` to your Space's metadata (as shown in this Space)
-> - Having users sign in with their Hugging Face accounts
-> - Upgrading to a Hugging Face Pro subscription for dedicated GPU resources
+### Key Technologies
+- **Parsers**: Gemini Flash, Mistral OCR, Docling, GOT-OCR, MarkItDown
+- **RAG System**: OpenAI embeddings + Chroma vector store + Gemini 2.5 Flash
+- **UI Framework**: Gradio with modular component architecture  
+- **GPU Support**: ZeroGPU integration for HF Spaces
