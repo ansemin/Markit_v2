@@ -19,7 +19,7 @@ A powerful Hugging Face Space that converts various document formats to Markdown
 ## 🎯 System Overview
 
 <div align="center">
-<img src="img/Overall%20System%20Workflow%20(Essential).png" alt="Overall System Workflow" width="250">
+<img src="img/Overall%20System%20Workflow%20(Essential).png" alt="Overall System Workflow" width="400">
 
 *Complete workflow from document upload to intelligent RAG chat interaction*
 </div>
