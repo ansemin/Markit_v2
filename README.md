@@ -18,11 +18,24 @@ hf_oauth: true
 
 A powerful Hugging Face Space that converts various document formats to Markdown and enables intelligent chat with your documents using advanced RAG (Retrieval-Augmented Generation).
 
+## 🎥 Demo Video
+
+<div align="center">
+<a href="https://www.youtube.com/watch?v=PmXu3Si6hXo">
+<img src="https://img.youtube.com/vi/PmXu3Si6hXo/maxresdefault.jpg" alt="Markit Demo Video" width="600">
+</a>
+
+**[▶️ Watch Full Demo (YouTube)](https://www.youtube.com/watch?v=PmXu3Si6hXo)**
+
+*Complete walkthrough of Markit's flagship features including multi-document processing, RAG chat, and advanced retrieval strategies*
+</div>
+
 <details>
 <summary><strong>Table of contents</strong></summary>
 
 <!-- Begin ToC -->
 
+- [Demo Video](#-demo-video)
 - [Live Demos](#-live-demos)
 - [System Overview](#-system-overview)
 - [Environment Setup](#-environment-setup)
