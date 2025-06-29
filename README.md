@@ -14,6 +14,8 @@ hf_oauth: true
 
 # Document to Markdown Converter with RAG Chat
 
+**Author: Anse Min** | [🤗 Hugging Face Space](https://huggingface.co/spaces/Ansemin101/Markit_v2) | [GitHub](https://github.com/ansemin/Markit_v2) | [LinkedIn](https://www.linkedin.com/in/ansemin/)
+
 A powerful Hugging Face Space that converts various document formats to Markdown and enables intelligent chat with your documents using advanced RAG (Retrieval-Augmented Generation).
 
 <details>
@@ -21,360 +23,160 @@ A powerful Hugging Face Space that converts various document formats to Markdown
 
 <!-- Begin ToC -->
 
+- [Live Demos](#-live-demos)
 - [System Overview](#-system-overview)
-- [Key Features](#-key-features)
-  - [Document Conversion](#document-conversion)
-  - [RAG Chat with Documents](#-rag-chat-with-documents)
-  - [Query Ranker (NEW!)](#-query-ranker-new)
-  - [User Interface](#user-interface)
-- [Supported Libraries](#supported-libraries)
-- [Multi-Document Processing](#-multi-document-processing)
-- [Environment Variables](#environment-variables)
-  - [API Keys](#-api-keys)
-  - [Configuration Options](#️-configuration-options)
-  - [Docling Configuration](#-docling-configuration)
-  - [Model Configuration](#-model-configuration)
-  - [RAG Configuration](#-rag-configuration)
-  - [Advanced Retrieval Configuration](#-advanced-retrieval-configuration)
-- [Usage Guide](#-usage-guide)
-  - [Parser Selection](#-parser-selection)
-  - [Document Conversion](#document-conversion-1)
-  - [RAG Chat & Query System](#-rag-chat--query-system)
-- [Local Development](#local-development)
-  - [Quick Start](#-quick-start)
-  - [Data Management](#-data-management)
-  - [Development Features](#-development-features)
-- [GOT-OCR LaTeX Processing](#-got-ocr-latex-processing)
-- [Credits](#credits)
-- [Retrieval Strategies](#-retrieval-strategies)
-- [Development](#-development)
-  - [Quick Start](#quick-start)
-  - [Key Technologies](#key-technologies)
+- [Environment Setup](#-environment-setup)
+- [Local Development](#-local-development)
+- [Technical Details](#-technical-details)
 
 <!-- End ToC -->
 
 </details>
 
-## 🎯 System Overview
+## 🎬 Live Demos
 
+### 1. Multi-Document Processing (Flagship Feature)
 <div align="center">
-<img src="img/Overall%20System%20Workflow%20(Essential).png" alt="Overall System Workflow" width="400">
-
-*Complete workflow from document upload to intelligent RAG chat interaction*
+<img src="GIF/Multi-Document Processing Showcase.gif" alt="Multi-Document Processing Demo" width="800">
 </div>
 
-## ✨ Key Features
-
-### Document Conversion
-- Convert PDFs, Office documents, images, and more to Markdown
-- **🆕 Multi-Document Processing**: Process up to 5 files simultaneously (20MB combined)
-- **5 Powerful Parsers**:
-  - **Gemini Flash**: General Purpose + High Accuracy
-  - **Mistral OCR**: Fastest Processing
-  - **Docling**: Open Source
-  - **GOT-OCR**: Document to LaTeX + Open Source  
-  - **MarkItDown**: High Accuracy CSV/XML + Open Source
-- **🆕 Intelligent Processing Types**:
-  - **Combined**: Merge documents into unified content with duplicate removal
-  - **Individual**: Separate sections per document with clear organization
-  - **Summary**: Executive overview + detailed analysis of all documents
-  - **Comparison**: Cross-document analysis with similarities/differences tables
-- Download converted documents as Markdown files
-
-### 🤖 RAG Chat with Documents
-- **Chat with your converted documents** using advanced AI
-- **🆕 Advanced Retrieval Strategies**: Multiple search methods for optimal results
-  - **Similarity Search**: Traditional semantic similarity using embeddings
-  - **MMR (Maximal Marginal Relevance)**: Diverse results with reduced redundancy
-  - **BM25 Keyword Search**: Traditional keyword-based retrieval
-  - **Hybrid Search**: Combines semantic + keyword search for best accuracy
-- **Intelligent document retrieval** using vector embeddings
-- **🆕 Smart Content-Aware Chunking**: 
-  - **Markdown chunking** that preserves tables and code blocks
-  - **LaTeX chunking** that preserves mathematical tables, environments, and structures
-  - **Automatic format detection** for optimal chunking strategy
-- **Streaming chat responses** for real-time interaction
-- **Chat history management** with session persistence
-- **Usage limits** to prevent abuse on public spaces
-- **Powered by Gemini 2.5 Flash** for high-quality responses
-- **OpenAI embeddings** for accurate document retrieval
-- **🗑️ Clear All Data** button for easy data management in both local and HF Space environments
-
-### 🔍 Query Ranker (NEW!)
-- **🆕 Third dedicated tab** for document search and ranking
-- **Interactive query search** with real-time document chunk ranking
-- **Multiple retrieval methods**: Similarity, MMR, BM25, and Hybrid search
-- **Intelligent confidence scoring**: Rank-based confidence levels (High/Medium/Low)
-- **Real similarity scores**: Actual ChromaDB similarity scores for similarity search
-- **Transparent results**: Clear display of source documents, page numbers, and chunk lengths
-- **Adjustable result count**: 1-10 results with responsive slider control
-- **Method comparison**: Test different retrieval strategies on the same query
-- **Modern card-based UI**: Clean, professional result display with hover effects
-
-### User Interface
-- **🆕 Three-tab interface**: Document Converter + Chat + Query Ranker
-- **🆕 Unified File Input**: Single interface handles both single and multiple file uploads
-- **🆕 Dynamic Processing Options**: Multi-document processing type selector appears automatically
-- **🆕 Real-time Validation**: Live feedback on file count, size limits, and processing mode
-- **Real-time status monitoring** for RAG system with environment detection
-- **Auto-ingestion** of converted documents into chat system
-- **Enhanced status display**: Shows vector store document count, chat history files, and environment type
-- **Data management controls**: Clear All Data button with comprehensive feedback
-- **Filename preservation**: Downloaded files maintain original names (e.g., "example data.pdf" → "example data.md")
-- **🆕 Smart Output Naming**: Batch processing creates descriptive filenames (e.g., "Combined_3_Documents_20240125.md")
-- **🆕 Consistent modern styling**: All tabs share the same professional design theme
-- Clean, responsive UI with modern styling
-
-## Supported Libraries
-
-**MarkItDown** ([Microsoft](https://github.com/microsoft/markitdown)): PDF, Office docs, images, audio, HTML, ZIP files, YouTube URLs, EPubs, and more.
-
-**Docling** ([IBM](https://github.com/DS4SD/docling)): Advanced PDF understanding with table structure recognition, multiple OCR engines, and layout analysis. **Supports multi-document processing** with Gemini-powered summary & comparison.
-
-**Gemini Flash** ([Google](https://deepmind.google/technologies/gemini/)): AI-powered document understanding with **advanced multi-document processing capabilities**, cross-format analysis, and intelligent content synthesis.
-
-**Mistral OCR**: High-accuracy OCR for PDFs and images with optional *Document Understanding* mode. **Supports multi-document processing** with Gemini-powered summary & comparison.
-
-## 🚀 Multi-Document Processing
-
-<img src="img/Multi-Document%20Processing%20Types%20(Flagship%20Feature).png" alt="Multi-Document Processing Types" width="700">
-
-*Industry-leading multi-document processing with 4 intelligent processing types*
-
-### **Key Capabilities:**
-- **📊 Cross-Document Analysis**: Compare and contrast information across different files
-- **🔄 Smart Duplicate Removal**: Intelligently merges overlapping content while preserving unique insights
-- **📋 Format Intelligence**: Handles mixed file types (PDF + images, Word + Excel, etc.) seamlessly
-- **🧠 Contextual Understanding**: Recognizes relationships and patterns across document boundaries
-
-### **Processing Types:**
-
-- **🔗 Combined**: Merge documents into unified content with duplicate removal
+**What it does:** Process up to 5 files simultaneously (20MB combined) with 4 intelligent processing types:
+- **🔗 Combined**: Merge documents with smart duplicate removal
 - **📑 Individual**: Separate sections per document with clear organization  
 - **📈 Summary**: Executive overview + detailed analysis of all documents
 - **⚖️ Comparison**: Cross-document analysis with similarities/differences tables
 
-## Environment Variables
+**Why it matters:** Industry-leading multi-document processing that compares and contrasts information across different files, handles mixed file types seamlessly, and recognizes relationships across document boundaries.
 
-The application uses centralized configuration management. You can enhance functionality by setting these environment variables:
+<div align="center">
+<img src="img/Multi-Document Processing Types (Flagship Feature).png" alt="Multi-Document Processing Types" width="700">
 
-### 🔑 **API Keys:**
-- `GOOGLE_API_KEY`: Used for Gemini Flash parser, LaTeX conversion, and **RAG chat functionality**
-- `OPENAI_API_KEY`: Enables AI-based image descriptions in MarkItDown and **vector embeddings for RAG**
-- `MISTRAL_API_KEY`: For Mistral OCR parser (if available)
+*Industry-leading multi-document processing with 4 intelligent processing types*
+</div>
 
-### ⚙️ **Configuration Options:**
-- `DEBUG`: Set to `true` for debug mode with verbose logging
-- `MAX_FILE_SIZE`: Maximum file size in bytes (default: 10MB)
-- `MAX_BATCH_FILES`: Maximum files for multi-document processing (default: 5)
-- `MAX_BATCH_SIZE`: Maximum combined size for batch processing (default: 20MB)
-- `TEMP_DIR`: Directory for temporary files (default: ./temp)
-- `TESSERACT_PATH`: Custom path to Tesseract executable
-- `TESSDATA_PATH`: Path to Tesseract language data
+### 2. Single Document Conversion Flow
+<div align="center">
+<img src="GIF/Single Document Conversion Flow.gif" alt="Single Document Conversion Demo" width="800">
+</div>
 
-### 🔧 **Docling Configuration:**
-- `DOCLING_ARTIFACTS_PATH`: Path to pre-downloaded Docling models for offline use
-- `DOCLING_ENABLE_REMOTE_SERVICES`: Enable remote vision model services (default: false)
-- `DOCLING_ENABLE_TABLES`: Enable table structure recognition (default: true)
-- `DOCLING_ENABLE_CODE_ENRICHMENT`: Enable code block enrichment (default: false)
-- `DOCLING_ENABLE_FORMULA_ENRICHMENT`: Enable formula understanding (default: false)
-- `DOCLING_ENABLE_PICTURE_CLASSIFICATION`: Enable picture classification (default: false)
-- `DOCLING_GENERATE_PICTURE_IMAGES`: Generate picture images during processing (default: false)
-- `OMP_NUM_THREADS`: Number of CPU threads for OCR processing (default: 4)
+**What it does:** Convert PDFs, Office documents, images, and more to Markdown using 5 powerful parsers:
+- **Gemini Flash**: AI-powered understanding with high accuracy
+- **Mistral OCR**: Fastest processing with document understanding
+- **Docling**: Open source with advanced PDF table recognition  
+- **GOT-OCR**: Mathematical/scientific documents to LaTeX
+- **MarkItDown**: High accuracy for CSV/XML and broad format support
 
-### 🤖 **Model Configuration:**
-- `GEMINI_MODEL`: Gemini model to use (default: gemini-1.5-flash)
-- `MISTRAL_MODEL`: Mistral model to use (default: pixtral-12b-2409)
-- `GOT_OCR_MODEL`: GOT-OCR model to use (default: stepfun-ai/GOT-OCR2_0)
-- `MODEL_TEMPERATURE`: Model temperature for AI responses (default: 0.1)
-- `MODEL_MAX_TOKENS`: Maximum tokens for AI responses (default: 4096)
+**Why it matters:** Perfect table preservation creates enhanced markdown tables for superior RAG context, unlike standard PDF text extraction.
 
-### 🧠 **RAG Configuration:**
-- `VECTOR_STORE_PATH`: Path for vector database storage (default: ./data/vector_store)
-- `CHAT_HISTORY_PATH`: Path for chat history storage (default: ./data/chat_history)
-- `EMBEDDING_MODEL`: OpenAI embedding model (default: text-embedding-3-small)
-- `CHUNK_SIZE`: Document chunk size for Markdown content (default: 1000)
-- `CHUNK_OVERLAP`: Overlap between chunks for Markdown (default: 200)
-- `LATEX_CHUNK_SIZE`: Document chunk size for LaTeX content (default: 1200)
-- `LATEX_CHUNK_OVERLAP`: Overlap between chunks for LaTeX (default: 150)
-- `MAX_MESSAGES_PER_SESSION`: Chat limit per session (default: 50)
-- `MAX_MESSAGES_PER_HOUR`: Chat limit per hour (default: 100)
-- `RETRIEVAL_K`: Number of documents to retrieve (default: 4)
-- `RAG_MODEL`: Model for RAG chat (default: gemini-2.5-flash)
-- `RAG_TEMPERATURE`: Temperature for RAG responses (default: 0.1)
-- `RAG_MAX_TOKENS`: Max tokens for RAG responses (default: 4096)
-
-### 🔍 **Advanced Retrieval Configuration:**
-- `DEFAULT_RETRIEVAL_METHOD`: Default retrieval strategy (default: similarity)
-- `MMR_LAMBDA_MULT`: MMR diversity parameter (default: 0.5)
-- `MMR_FETCH_K`: MMR candidate document count (default: 10)
-- `HYBRID_SEMANTIC_WEIGHT`: Semantic search weight in hybrid mode (default: 0.7)
-- `HYBRID_KEYWORD_WEIGHT`: Keyword search weight in hybrid mode (default: 0.3)
-- `BM25_K1`: BM25 term frequency saturation parameter (default: 1.2)
-- `BM25_B`: BM25 field length normalization parameter (default: 0.75)
-
-## 📖 Usage Guide
-
-### 🎯 Parser Selection
-
-<img src="img/Parser%20Selection%20Guide%20(User-Friendly).png" alt="Parser Selection Guide" width="700">
+<div align="center">
+<img src="img/Parser Selection Guide (User-Friendly).png" alt="Parser Selection Guide" width="700">
 
 *Choose the right parser for your specific needs and document types*
+</div>
 
-### Document Conversion
+### 3. RAG Chat System in Action
+<div align="center">
+<img src="GIF/RAG Chat System in Action.gif" alt="RAG Chat System Demo" width="800">
+</div>
 
-#### 📄 **Single Document Processing**
-1. Upload a single file
-2. Choose your preferred parser
-3. Select an OCR method based on your chosen parser
-4. Click "Convert"
-5. Download the converted file (.tex for GOT-OCR, .md for others)
+**What it does:** Chat with your converted documents using 4 advanced retrieval strategies:
+- **🎯 Similarity**: Traditional semantic similarity using embeddings
+- **🔀 MMR**: Diverse results with reduced redundancy  
+- **🔍 BM25**: Traditional keyword-based retrieval
+- **🔗 Hybrid**: Combines semantic + keyword search (recommended)
 
-#### 📂 **Multi-Document Processing**
-1. Upload **2-5 files** (up to 20MB combined)
-2. Choose processing type: Combined, Individual, Summary, or Comparison
-3. Select your preferred parser
-4. Click "Convert" for intelligent cross-document analysis
+**Why it matters:** Ask for markdown tables in chat responses (impossible with standard PDF RAG), get streaming responses with document context, and easily clear data directly from the interface.
 
-### 🤖 RAG Chat & Query System
-
-<img src="img/RAG%20Retrieval%20Strategies%20(Technical%20Highlight).png" alt="RAG Retrieval Strategies" width="700">
+<div align="center">
+<img src="img/RAG Retrieval Strategies (Technical Highlight).png" alt="RAG Retrieval Strategies" width="700">
 
 *Advanced RAG system with 4 retrieval strategies for optimal document search*
+</div>
 
-#### **Chat with Documents**
-1. Choose your retrieval strategy (Similarity, MMR, BM25, or Hybrid)
-2. Ask questions about your converted documents
-3. Get real-time streaming responses with document context
+### 4. Query Ranker Analysis
+<div align="center">
+<img src="GIF/Query Ranker Analysis.gif" alt="Query Ranker Demo" width="800">
+</div>
 
-#### **Query Ranker**
-1. Enter search queries to explore document chunks
-2. Compare different retrieval methods
-3. View confidence scores and source information
+**What it does:** Interactive document search with:
+- **Real-time ranking** of document chunks with confidence scores
+- **Method comparison** to test different retrieval strategies
+- **Adjustable results** (1-10) with responsive slider control
+- **Transparent scoring** with actual ChromaDB similarity scores
 
-## Local Development
+**Why it matters:** Provides complete transparency into how your RAG system finds and ranks information, helping you optimize retrieval strategies.
 
-### 🚀 **Quick Start:**
-1. Clone the repository
-2. Create a `.env` file with your API keys:
-   ```
-   GOOGLE_API_KEY=your_gemini_api_key_here
-   OPENAI_API_KEY=your_openai_api_key_here
-   MISTRAL_API_KEY=your_mistral_api_key_here
-   DEBUG=true
-   
-   # RAG Configuration (optional - uses defaults if not set)
-   MAX_MESSAGES_PER_SESSION=50
-   MAX_MESSAGES_PER_HOUR=100
-   CHUNK_SIZE=1000
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Run the application:
-   ```bash
-   # For full environment setup (HF Spaces compatible)
-   python app.py
-   
-   # For local development (faster startup)
-   python run_app.py
-   
-   # For testing with clean data
-   python run_app.py --clear-data-and-run
-   
-   # Show all available options
-   python run_app.py --help
-   ```
+### 5. GOT-OCR LaTeX Processing
+<div align="center">
+<img src="GIF/GOT-OCR LaTeX Processing.gif" alt="GOT-OCR LaTeX Demo" width="800">
+</div>
 
-### 🧹 **Data Management:**
+**What it does:** Advanced LaTeX processing for mathematical and scientific documents:
+- **Native LaTeX output** with no LLM conversion for maximum accuracy
+- **Mathpix rendering** using the same library as official GOT-OCR demo
+- **RAG-compatible chunking** that preserves LaTeX structures and mathematical tables
+- **Professional display** with proper mathematical formatting
 
-**Two ways to clear data:**
+**Why it matters:** Perfect for research papers, scientific documents, and academic content with complex equations and structured data.
 
-1. **Command-line** (for development):
-   - `python run_app.py --clear-data-and-run` - Clear data then start app
-   - `python run_app.py --clear-data` - Clear data and exit
+## 🎯 System Overview
 
-2. **In-app UI** (for users):
-   - Go to "Chat with Documents" tab → Click "🗑️ Clear All Data" button
-   - Automatically detects environment (local vs HF Space)
-   - Provides detailed feedback and starts new session
+<div align="center">
+<img src="img/Overall%20System%20Workflow%20(Essential).png" alt="Overall System Workflow" width="600">
 
-**What gets cleared:**
-- `data/chat_history/*` - All saved chat sessions  
-- `data/vector_store/*` - All document embeddings and vector database
+*Complete workflow from document upload to intelligent RAG chat interaction*
+</div>
 
-### 🧪 **Development Features:**
-- **Automatic Environment Setup**: Dependencies are checked and installed automatically
-- **Configuration Validation**: Startup validation reports missing API keys and configuration issues
-- **Enhanced Error Messages**: Detailed error reporting for debugging
-- **Centralized Logging**: Configurable logging levels and output formats
+## 🔧 Environment Setup
 
-## 📄 GOT-OCR LaTeX Processing
-
-Markit v2 features **advanced LaTeX processing** for GOT-OCR results, providing proper mathematical and tabular content handling:
-
-### **🎯 Key Features:**
-
-#### **1. Native LaTeX Output**
-- **No LLM conversion**: GOT-OCR returns raw LaTeX directly for maximum accuracy
-- **Preserves mathematical structures**: Complex formulas, tables, and equations remain intact
-- **.tex file output**: Save files in proper LaTeX format for external use
-
-#### **2. Mathpix Markdown Rendering**
-- **Professional display**: Uses Mathpix Markdown library (same as official GOT-OCR demo)
-- **Complex table support**: Renders `\begin{tabular}`, `\multirow`, `\multicolumn` properly
-- **Mathematical expressions**: Displays LaTeX math with proper formatting
-- **Base64 iframe embedding**: Secure, isolated rendering environment
-
-#### **3. RAG-Compatible LaTeX Chunking**
-- **LaTeX-aware chunker**: Specialized chunking preserves LaTeX structures
-- **Complete table preservation**: Entire `\begin{tabular}...\end{tabular}` blocks stay intact
-- **Environment detection**: Maintains `\begin{env}...\end{env}` pairs
-- **Intelligent separators**: Uses LaTeX commands (`\section`, `\title`) as break points
-
-#### **4. Enhanced Metadata**
-- **Content type tracking**: `content_type: "latex"` for proper handling
-- **Structure detection**: Identifies tables, environments, and mathematical content
-- **Auto-format detection**: GOT-OCR results automatically use LaTeX chunker
-
-### **🔧 Technical Implementation:**
-
-```javascript
-// Mathpix rendering (inspired by official GOT-OCR demo)
-const html = window.render(latexContent, {htmlTags: true});
-
-// LaTeX structure preservation
-\begin{tabular}{|l|c|c|}
-\hline Disability & Participants & Results \\
-\hline Blind & 5 & $34.5\%, n=1$ \\
-\end{tabular}
+### Required API Keys
+```bash
+GOOGLE_API_KEY=your_gemini_api_key_here    # For Gemini Flash parser and RAG chat
+OPENAI_API_KEY=your_openai_api_key_here    # For embeddings and AI descriptions  
+MISTRAL_API_KEY=your_mistral_api_key_here  # For Mistral OCR parser (optional)
 ```
 
-### **📊 Use Cases:**
-- **Research papers**: Mathematical formulas and data tables
-- **Scientific documents**: Complex equations and statistical data
-- **Financial reports**: Tabular data with calculations
-- **Academic content**: Mixed text, math, and structured data
+### Key Configuration Options
+```bash
+DEBUG=true                        # Enable debug logging
+MAX_FILE_SIZE=10485760           # 10MB per file limit
+MAX_BATCH_FILES=5                # Maximum files for multi-document processing
+MAX_BATCH_SIZE=20971520          # 20MB combined limit for batch processing
+CHUNK_SIZE=1000                  # Document chunk size for Markdown content
+RETRIEVAL_K=4                    # Number of documents to retrieve for RAG
+```
 
-## Credits
+## 🚀 Local Development
 
-- [MarkItDown](https://github.com/microsoft/markitdown) by Microsoft
-- [GOT-OCR](https://github.com/stepfun-ai/GOT-OCR-2.0) for image-based OCR
-- [Mathpix Markdown](https://github.com/Mathpix/mathpix-markdown-it) for LaTeX rendering
-- [Gradio](https://gradio.app/) for the UI framework
+### Quick Start
+```bash
+# Clone repository
+git clone https://github.com/ansemin/Markit_v2
+cd Markit_v2
 
----
+# Create environment file
+cp .env.example .env
+# Edit .env with your API keys
 
-**Author: Anse Min** | [GitHub](https://github.com/ansemin) | [LinkedIn](https://www.linkedin.com/in/ansemin/)
+# Install dependencies
+pip install -r requirements.txt
 
-**Project Links:**
-- [GitHub Repository](https://github.com/ansemin/Markit_v2)
-- [Hugging Face Space](https://huggingface.co/spaces/Ansemin101/Markit_v2)
+# Run application
+python app.py                    # Full environment setup (HF Spaces compatible)
+python run_app.py               # Local development (faster startup)
+python run_app.py --clear-data-and-run  # Testing with clean data
+```
 
+### Data Management
+**Two ways to clear data:**
+1. **UI Method**: Chat tab → "🗑️ Clear All Data" button (works in both local and HF Space)
+2. **CLI Method**: `python run_app.py --clear-data-and-run`
 
-## 🔍 Retrieval Strategies
+**What gets cleared:** Vector store embeddings, chat history, and session data
 
+## 🔍 Technical Details
+
+### Retrieval Strategy Performance
 | Method | Best For | Accuracy |
 |--------|----------|----------|
 | **🎯 Similarity** | General semantic questions | Good |
@@ -382,24 +184,25 @@ const html = window.render(latexContent, {htmlTags: true});
 | **🔍 BM25** | Exact keyword searches | Medium |
 | **🔗 Hybrid** | Most queries (recommended) | **Excellent** |
 
-## 💻 Development
-
-### Quick Start
-```bash
-# Clone repository
-git clone https://github.com/ansemin/Markit_v2
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
-
-# Install dependencies & run
-pip install -r requirements.txt
-python app.py
-```
-
-### Key Technologies
+### Core Technologies
 - **Parsers**: Gemini Flash, Mistral OCR, Docling, GOT-OCR, MarkItDown
-- **RAG System**: OpenAI embeddings + Chroma vector store + Gemini 2.5 Flash
+- **RAG System**: OpenAI embeddings + ChromaDB vector store + Gemini 2.5 Flash
 - **UI Framework**: Gradio with modular component architecture  
 - **GPU Support**: ZeroGPU integration for HF Spaces
+
+### Smart Content-Aware Chunking
+- **Markdown chunking**: Preserves tables and code blocks
+- **LaTeX chunking**: Preserves mathematical tables, environments, and structures
+- **Automatic format detection**: Optimal chunking strategy per document type
+
+## Credits
+
+- [MarkItDown](https://github.com/microsoft/markitdown) by Microsoft
+- [Docling](https://github.com/DS4SD/docling) by IBM Research
+- [GOT-OCR](https://github.com/stepfun-ai/GOT-OCR-2.0) by StepFun
+- [Mathpix Markdown](https://github.com/Mathpix/mathpix-markdown-it) for LaTeX rendering
+- [Gradio](https://gradio.app/) for the UI framework
+
+---
+
+**🚀 [Try it live on Hugging Face Spaces](https://huggingface.co/spaces/Ansemin101/Markit_v2)**
