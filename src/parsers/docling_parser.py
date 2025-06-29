@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Union, Set
 import tempfile
 
+# Force CPU-only mode for EasyOCR and other CUDA libraries
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['USE_TORCH'] = '1'
+os.environ['EASYOCR_GPU'] = 'False'
+
 # Import the parser interface and registry
 from src.parsers.parser_interface import DocumentParser
 from src.parsers.parser_registry import ParserRegistry
@@ -115,10 +120,26 @@ class DoclingParser(DocumentParser):
             if HAS_SPACES:
                 try:
                     logger.info("Attempting Docling processing with ZeroGPU")
-                    result = self._process_with_gpu(str(file_path), ocr_method, **kwargs)
+                    # Filter kwargs to avoid pickle issues
+                    safe_kwargs = {}
+                    for key, value in kwargs.items():
+                        if not key.startswith('_') and not hasattr(value, '__call__'):
+                            try:
+                                import pickle
+                                pickle.dumps(value)
+                                safe_kwargs[key] = value
+                            except (TypeError, pickle.PickleError):
+                                logger.debug(f"Skipping unpicklable kwarg: {key}")
+                    
+                    result = self._process_with_gpu(str(file_path), ocr_method, **safe_kwargs)
                     return result
                 except Exception as e:
-                    logger.warning(f"ZeroGPU processing failed: {str(e)}")
+                    if "pickle" in str(e).lower():
+                        logger.warning(f"ZeroGPU pickle error: {str(e)}")
+                    elif "cuda" in str(e).lower():
+                        logger.warning(f"ZeroGPU CUDA error: {str(e)}")
+                    else:
+                        logger.warning(f"ZeroGPU processing failed: {str(e)}")
                     logger.info("Falling back to CPU processing")
             
             # Fallback to CPU processing
@@ -148,7 +169,7 @@ class DoclingParser(DocumentParser):
         return result.document.export_to_markdown()
     
     def _create_cpu_converter(self, ocr_method: Optional[str] = None, **kwargs) -> DocumentConverter:
-        """Create a CPU-only DocumentConverter."""
+        """Create a CPU-only DocumentConverter with proper OCR fallback."""
         # Configure CPU-only accelerator
         accelerator_options = AcceleratorOptions(
             num_threads=4, 
@@ -162,13 +183,21 @@ class DoclingParser(DocumentParser):
         pipeline_options.do_table_structure = True
         pipeline_options.table_structure_options.do_cell_matching = True
         
-        # Configure OCR method
+        # Configure OCR method - prefer EasyOCR with CPU enforcement
         if ocr_method == "docling_tesseract":
-            pipeline_options.ocr_options = TesseractOcrOptions()
-        elif ocr_method == "docling_easyocr":
+            try:
+                import subprocess
+                subprocess.run(["tesseract", "--version"], capture_output=True, check=True)
+                pipeline_options.ocr_options = TesseractOcrOptions()
+                logger.info("Using Tesseract OCR (CPU-only)")
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                logger.warning("Tesseract not available, falling back to EasyOCR")
+                pipeline_options.ocr_options = EasyOcrOptions()
+                logger.info("Using EasyOCR (CPU-only)")
+        else:
+            # Default to EasyOCR (including docling_easyocr and docling_default)
             pipeline_options.ocr_options = EasyOcrOptions()
-        else:  # Default to EasyOCR
-            pipeline_options.ocr_options = EasyOcrOptions()
+            logger.info("Using EasyOCR (CPU-only)")
         
         # Configure advanced features
         pipeline_options.do_table_structure = kwargs.get('enable_tables', True)
