@@ -16,25 +16,30 @@ from src.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-class LimitedEnsembleRetriever(BaseRetriever):
-    """Wrapper around EnsembleRetriever that limits total results to k."""
+class LimitedEnsembleRetriever:
+    """Simple wrapper around EnsembleRetriever that limits total results to k."""
     
     def __init__(self, ensemble_retriever: EnsembleRetriever, k: int):
-        super().__init__()
         self.ensemble_retriever = ensemble_retriever
         self.k = k
     
-    def _get_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
+    def get_relevant_documents(self, query: str) -> List[Document]:
         """Get relevant documents, limited to k results."""
-        # Get all results from ensemble retriever
-        docs = self.ensemble_retriever.get_relevant_documents(query)
+        # Use invoke method instead of deprecated get_relevant_documents
+        docs = self.ensemble_retriever.invoke(query)
         # Limit to k results
         return docs[:self.k]
     
-    async def _aget_relevant_documents(self, query: str, *, run_manager=None) -> List[Document]:
+    async def aget_relevant_documents(self, query: str) -> List[Document]:
         """Async version of get_relevant_documents."""
-        docs = await self.ensemble_retriever.aget_relevant_documents(query)
+        docs = await self.ensemble_retriever.ainvoke(query)
         return docs[:self.k]
+    
+    def invoke(self, input_data, config=None, **kwargs):
+        """Compatibility method for invoke interface."""
+        if isinstance(input_data, str):
+            return self.get_relevant_documents(input_data)
+        return self.get_relevant_documents(input_data)
 
 
 class VectorStoreManager:
