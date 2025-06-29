@@ -183,21 +183,9 @@ class DoclingParser(DocumentParser):
         pipeline_options.do_table_structure = True
         pipeline_options.table_structure_options.do_cell_matching = True
         
-        # Configure OCR method - prefer EasyOCR with CPU enforcement
-        if ocr_method == "docling_tesseract":
-            try:
-                import subprocess
-                subprocess.run(["tesseract", "--version"], capture_output=True, check=True)
-                pipeline_options.ocr_options = TesseractOcrOptions()
-                logger.info("Using Tesseract OCR (CPU-only)")
-            except (FileNotFoundError, subprocess.CalledProcessError):
-                logger.warning("Tesseract not available, falling back to EasyOCR")
-                pipeline_options.ocr_options = EasyOcrOptions()
-                logger.info("Using EasyOCR (CPU-only)")
-        else:
-            # Default to EasyOCR (including docling_easyocr and docling_default)
-            pipeline_options.ocr_options = EasyOcrOptions()
-            logger.info("Using EasyOCR (CPU-only)")
+        # Configure OCR method - use EasyOCR with CPU enforcement
+        pipeline_options.ocr_options = EasyOcrOptions()
+        logger.info("Using EasyOCR (CPU-only)")
         
         # Configure advanced features
         pipeline_options.do_table_structure = kwargs.get('enable_tables', True)
@@ -238,13 +226,8 @@ class DoclingParser(DocumentParser):
             pipeline_options.do_table_structure = True
             pipeline_options.table_structure_options.do_cell_matching = True
             
-            # Configure OCR method
-            if ocr_method == "docling_tesseract":
-                pipeline_options.ocr_options = TesseractOcrOptions()
-            elif ocr_method == "docling_easyocr":
-                pipeline_options.ocr_options = EasyOcrOptions()
-            else:  # Default to EasyOCR
-                pipeline_options.ocr_options = EasyOcrOptions()
+            # Configure OCR method - use EasyOCR
+            pipeline_options.ocr_options = EasyOcrOptions()
             
             # Configure advanced features
             pipeline_options.do_table_structure = kwargs.get('enable_tables', True)
@@ -308,21 +291,10 @@ class DoclingParser(DocumentParser):
     @classmethod
     def get_supported_ocr_methods(cls) -> List[Dict[str, Any]]:
         """Return list of supported OCR methods."""
-        methods = [
+        return [
             {
                 "id": "docling_default",
-                "name": "Docling Default (EasyOCR)",
-                "default_params": {
-                    "enable_tables": True,
-                    "enable_code_enrichment": False,
-                    "enable_formula_enrichment": False,
-                    "enable_picture_classification": False,
-                    "generate_picture_images": False
-                }
-            },
-            {
-                "id": "docling_easyocr",
-                "name": "Docling EasyOCR",
+                "name": "EasyOCR",
                 "default_params": {
                     "enable_tables": True,
                     "enable_code_enrichment": False,
@@ -332,26 +304,6 @@ class DoclingParser(DocumentParser):
                 }
             }
         ]
-        
-        # Add Tesseract method if available (requires system installation)
-        try:
-            import subprocess
-            subprocess.run(["tesseract", "--version"], capture_output=True, check=True)
-            methods.append({
-                "id": "docling_tesseract",
-                "name": "Docling Tesseract OCR",
-                "default_params": {
-                    "enable_tables": True,
-                    "enable_code_enrichment": False,
-                    "enable_formula_enrichment": False,
-                    "enable_picture_classification": False,
-                    "generate_picture_images": False
-                }
-            })
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            logger.debug("Tesseract not available on system")
-        
-        return methods
     
     @classmethod
     def get_description(cls) -> str:
