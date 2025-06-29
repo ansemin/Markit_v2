@@ -16,6 +16,45 @@ hf_oauth: true
 
 A powerful Hugging Face Space that converts various document formats to Markdown and enables intelligent chat with your documents using advanced RAG (Retrieval-Augmented Generation).
 
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+<!-- Begin ToC -->
+
+- [System Overview](#-system-overview)
+- [Key Features](#-key-features)
+  - [Document Conversion](#document-conversion)
+  - [RAG Chat with Documents](#-rag-chat-with-documents)
+  - [Query Ranker (NEW!)](#-query-ranker-new)
+  - [User Interface](#user-interface)
+- [Supported Libraries](#supported-libraries)
+- [Multi-Document Processing](#-multi-document-processing)
+- [Environment Variables](#environment-variables)
+  - [API Keys](#-api-keys)
+  - [Configuration Options](#️-configuration-options)
+  - [Docling Configuration](#-docling-configuration)
+  - [Model Configuration](#-model-configuration)
+  - [RAG Configuration](#-rag-configuration)
+  - [Advanced Retrieval Configuration](#-advanced-retrieval-configuration)
+- [Usage Guide](#-usage-guide)
+  - [Parser Selection](#-parser-selection)
+  - [Document Conversion](#document-conversion-1)
+  - [RAG Chat & Query System](#-rag-chat--query-system)
+- [Local Development](#local-development)
+  - [Quick Start](#-quick-start)
+  - [Data Management](#-data-management)
+  - [Development Features](#-development-features)
+- [GOT-OCR LaTeX Processing](#-got-ocr-latex-processing)
+- [Credits](#credits)
+- [Retrieval Strategies](#-retrieval-strategies)
+- [Development](#-development)
+  - [Quick Start](#quick-start)
+  - [Key Technologies](#key-technologies)
+
+<!-- End ToC -->
+
+</details>
+
 ## 🎯 System Overview
 
 <div align="center">

@@ -194,8 +194,17 @@ class GeminiFlashParser(DocumentParser):
         # Validate file types
         for file_path in file_paths:
             file_extension = file_path.suffix.lower()
-            if self._get_mime_type(file_extension) == "application/octet-stream":
-                raise ValueError(f"Unsupported file type: {file_path.name}")
+            mime_type = self._get_mime_type(file_extension)
+            if mime_type == "application/octet-stream":
+                raise ValueError(f"Unsupported file type: {file_path.name}. Gemini supports: PDF, TXT, HTML, CSS, MD, CSV, XML, RTF, JS, PY, and image files.")
+            # Check if it's a supported MIME type for Gemini
+            if mime_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                           "application/msword", 
+                           "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                           "application/vnd.ms-powerpoint",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           "application/vnd.ms-excel"]:
+                raise ValueError(f"File type not supported by Gemini: {file_path.name}. Gemini supports: PDF, TXT, HTML, CSS, MD, CSV, XML, RTF, JS, PY, and image files.")
     
     def _create_batch_contents(self, file_paths: List[Path], processing_type: str, original_filenames: Optional[List[str]] = None) -> List[Any]:
         """Create contents list for batch API call."""
@@ -344,6 +353,7 @@ Return only the markdown content, no other text."""
             ".md": "text/markdown",
             ".html": "text/html",
             ".htm": "text/html",
+            ".csv": "text/csv",
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".png": "image/png",

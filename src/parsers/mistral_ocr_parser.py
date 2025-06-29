@@ -111,8 +111,8 @@ class MistralOcrParser(DocumentParser):
         """Extract document content using basic OCR."""
         try:
             # Process according to file type
-            if file_extension in ['.pdf']:
-                # For PDFs, we need to upload the file to the Mistral API first
+            if file_extension in ['.pdf', '.docx', '.pptx']:
+                # For documents (PDF, DOCX, PPTX), we need to upload the file to the Mistral API first
                 try:
                     # Upload the file to Mistral API
                     uploaded_pdf = client.files.upload(
@@ -137,20 +137,21 @@ class MistralOcrParser(DocumentParser):
                     )
                 except Exception as e:
                     # If file upload fails, try to use a direct URL method with base64
-                    logger.warning(f"Failed to upload PDF, trying alternate method: {str(e)}")
-                    base64_pdf = self.encode_image(file_path)
+                    logger.warning(f"Failed to upload document, trying alternate method: {str(e)}")
+                    base64_doc = self.encode_image(file_path)
                     
-                    if base64_pdf:
+                    if base64_doc:
+                        mime_type = self._get_mime_type(file_extension)
                         ocr_response = client.ocr.process(
                             model="mistral-ocr-latest",
                             document={
                                 "type": "document_url",
-                                "document_url": f"data:application/pdf;base64,{base64_pdf}"
+                                "document_url": f"data:{mime_type};base64,{base64_doc}"
                             },
                             include_image_base64=True
                         )
                     else:
-                        raise DocumentProcessingError("Failed to process PDF document")
+                        raise DocumentProcessingError("Failed to process document")
             else:
                 # For images (jpg, png, etc.), use image_url with base64
                 base64_image = self.encode_image(file_path)
@@ -237,9 +238,9 @@ class MistralOcrParser(DocumentParser):
     def _extract_with_document_understanding(self, client, file_path, file_extension):
         """Extract and understand document content using chat completion."""
         try:
-            # For PDFs and images, we'll use Mistral's document understanding capability
-            if file_extension in ['.pdf']:
-                # Upload PDF first
+            # For documents and images, we'll use Mistral's document understanding capability
+            if file_extension in ['.pdf', '.docx', '.pptx']:
+                # Upload document first
                 try:
                     # Upload the file
                     uploaded_pdf = client.files.upload(
@@ -321,9 +322,13 @@ class MistralOcrParser(DocumentParser):
             raise ConversionError(f"Document understanding failed: {str(e)}")
     
     def _get_mime_type(self, file_extension: str) -> str:
-        """Get the MIME type for a file extension."""
+        """Get the MIME type for a file extension supported by Mistral OCR."""
         mime_types = {
+            # Document formats supported by Mistral OCR
             ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            # Image formats supported by Mistral OCR
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".png": "image/png",
@@ -331,6 +336,8 @@ class MistralOcrParser(DocumentParser):
             ".bmp": "image/bmp",
             ".tiff": "image/tiff",
             ".tif": "image/tiff",
+            ".avif": "image/avif",
+            ".webp": "image/webp",
         }
         
         return mime_types.get(file_extension, "application/octet-stream")
@@ -383,7 +390,7 @@ class MistralOcrParser(DocumentParser):
     def _create_document_part(self, file_path: Path) -> Dict[str, Any]:
         """Return a dict representing an image_url or document_url part for Mistral chat/OCR."""
         ext = file_path.suffix.lower()
-        if ext == '.pdf':
+        if ext in ['.pdf', '.docx', '.pptx']:
             # upload and get signed url
             client = Mistral(api_key=config.api.mistral_api_key)
             uploaded = client.files.upload(
