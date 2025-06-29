@@ -1,3 +1,10 @@
+# Import spaces module for ZeroGPU support - Must be first import
+try:
+    import spaces
+    HAS_SPACES = True
+except ImportError:
+    HAS_SPACES = False
+
 import logging
 import os
 from pathlib import Path
@@ -16,6 +23,7 @@ try:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions, TesseractOcrOptions
     from docling.document_converter import PdfFormatOption
+    from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
     HAS_DOCLING = True
 except ImportError:
     HAS_DOCLING = False
@@ -42,16 +50,11 @@ class DoclingParser(DocumentParser):
     def __init__(self):
         super().__init__()  # Initialize the base class (including _cancellation_flag)
         self.converter = None
+        self.gpu_converter = None
         
-        # Initialize Docling converter
-        if HAS_DOCLING:
-            try:
-                # Create default converter instance
-                self.converter = DocumentConverter()
-                logger.info("Docling initialized successfully")
-            except Exception as e:
-                logger.error(f"Error initializing Docling: {str(e)}")
-                self.converter = None
+        # Don't initialize converters here to avoid CUDA issues
+        # They will be created on-demand in the parse methods
+        logger.info("Docling parser initialized (converters will be created on-demand)")
     
     def _create_converter_with_options(self, ocr_method: str, **kwargs) -> DocumentConverter:
         """Create a DocumentConverter with specific OCR options."""
@@ -100,7 +103,7 @@ class DoclingParser(DocumentParser):
         self.validate_file(file_path)
         
         # Check if Docling is available
-        if not HAS_DOCLING or self.converter is None:
+        if not HAS_DOCLING:
             raise ParserError("Docling is not available. Please install with 'pip install docling'")
         
         # Check for cancellation before starting
@@ -108,27 +111,145 @@ class DoclingParser(DocumentParser):
             raise DocumentProcessingError("Conversion cancelled")
         
         try:
-            # Use method-specific converter if OCR method is specified
-            if ocr_method and ocr_method != "docling_default":
-                converter = self._create_converter_with_options(ocr_method, **kwargs)
-            else:
-                converter = self.converter
+            # Try ZeroGPU first, fallback to CPU
+            if HAS_SPACES:
+                try:
+                    logger.info("Attempting Docling processing with ZeroGPU")
+                    result = self._process_with_gpu(str(file_path), ocr_method, **kwargs)
+                    return result
+                except Exception as e:
+                    logger.warning(f"ZeroGPU processing failed: {str(e)}")
+                    logger.info("Falling back to CPU processing")
             
-            # Convert the document
-            result = converter.convert(str(file_path))
-            
-            # Check for cancellation after processing
-            if self._check_cancellation():
-                raise DocumentProcessingError("Conversion cancelled")
-            
-            # Export to markdown
-            markdown_content = result.document.export_to_markdown()
-            
-            return markdown_content
+            # Fallback to CPU processing
+            result = self._process_with_cpu(str(file_path), ocr_method, **kwargs)
+            return result
             
         except Exception as e:
             logger.error(f"Error converting file with Docling: {str(e)}")
             raise DocumentProcessingError(f"Docling conversion failed: {str(e)}")
+    
+    def _process_with_cpu(self, file_path: str, ocr_method: Optional[str] = None, **kwargs) -> str:
+        """Process document with CPU-only Docling converter."""
+        logger.info("Processing with CPU-only Docling converter")
+        
+        # Create CPU converter if not exists
+        if self.converter is None:
+            self.converter = self._create_cpu_converter(ocr_method, **kwargs)
+        
+        # Convert the document
+        result = self.converter.convert(file_path)
+        
+        # Check for cancellation after processing
+        if self._check_cancellation():
+            raise DocumentProcessingError("Conversion cancelled")
+        
+        # Export to markdown
+        return result.document.export_to_markdown()
+    
+    def _create_cpu_converter(self, ocr_method: Optional[str] = None, **kwargs) -> DocumentConverter:
+        """Create a CPU-only DocumentConverter."""
+        # Configure CPU-only accelerator
+        accelerator_options = AcceleratorOptions(
+            num_threads=4, 
+            device=AcceleratorDevice.CPU
+        )
+        
+        # Create pipeline options with CPU-only accelerator
+        pipeline_options = PdfPipelineOptions()
+        pipeline_options.accelerator_options = accelerator_options
+        pipeline_options.do_ocr = True
+        pipeline_options.do_table_structure = True
+        pipeline_options.table_structure_options.do_cell_matching = True
+        
+        # Configure OCR method
+        if ocr_method == "docling_tesseract":
+            pipeline_options.ocr_options = TesseractOcrOptions()
+        elif ocr_method == "docling_easyocr":
+            pipeline_options.ocr_options = EasyOcrOptions()
+        else:  # Default to EasyOCR
+            pipeline_options.ocr_options = EasyOcrOptions()
+        
+        # Configure advanced features
+        pipeline_options.do_table_structure = kwargs.get('enable_tables', True)
+        pipeline_options.do_code_enrichment = kwargs.get('enable_code_enrichment', False)
+        pipeline_options.do_formula_enrichment = kwargs.get('enable_formula_enrichment', False)
+        pipeline_options.do_picture_classification = kwargs.get('enable_picture_classification', False)
+        pipeline_options.generate_picture_images = kwargs.get('generate_picture_images', False)
+        
+        # Create converter with CPU-only configuration
+        return DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=pipeline_options,
+                )
+            }
+        )
+    
+    # Define the GPU-decorated function for ZeroGPU
+    if HAS_SPACES:
+        @spaces.GPU(duration=120)  # Allocate GPU for up to 2 minutes
+        def _process_with_gpu(self, file_path: str, ocr_method: Optional[str] = None, **kwargs) -> str:
+            """Process document with GPU-accelerated Docling converter.
+            
+            IMPORTANT: All model loading and CUDA operations must happen inside this method.
+            """
+            logger.info("Processing with ZeroGPU allocation")
+            
+            # Configure GPU accelerator
+            accelerator_options = AcceleratorOptions(
+                num_threads=4, 
+                device=AcceleratorDevice.CUDA
+            )
+            
+            # Create pipeline options with GPU accelerator
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.accelerator_options = accelerator_options
+            pipeline_options.do_ocr = True
+            pipeline_options.do_table_structure = True
+            pipeline_options.table_structure_options.do_cell_matching = True
+            
+            # Configure OCR method
+            if ocr_method == "docling_tesseract":
+                pipeline_options.ocr_options = TesseractOcrOptions()
+            elif ocr_method == "docling_easyocr":
+                pipeline_options.ocr_options = EasyOcrOptions()
+            else:  # Default to EasyOCR
+                pipeline_options.ocr_options = EasyOcrOptions()
+            
+            # Configure advanced features
+            pipeline_options.do_table_structure = kwargs.get('enable_tables', True)
+            pipeline_options.do_code_enrichment = kwargs.get('enable_code_enrichment', False)
+            pipeline_options.do_formula_enrichment = kwargs.get('enable_formula_enrichment', False)
+            pipeline_options.do_picture_classification = kwargs.get('enable_picture_classification', False)
+            pipeline_options.generate_picture_images = kwargs.get('generate_picture_images', False)
+            
+            # Create converter with GPU configuration inside the decorated function
+            converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_options=pipeline_options,
+                    )
+                }
+            )
+            
+            # Convert the document
+            result = converter.convert(file_path)
+            
+            # Export to markdown
+            markdown_content = result.document.export_to_markdown()
+            
+            # Clean up to free memory
+            del converter
+            import gc
+            gc.collect()
+            
+            return markdown_content
+    else:
+        # Define a dummy method if spaces is not available
+        def _process_with_gpu(self, file_path: str, ocr_method: Optional[str] = None, **kwargs) -> str:
+            # This should never be called if HAS_SPACES is False
+            return self._process_with_cpu(file_path, ocr_method, **kwargs)
     
     @classmethod
     def get_name(cls) -> str:
@@ -258,14 +379,8 @@ class DoclingParser(DocumentParser):
         if self._check_cancellation():
             raise DocumentProcessingError("Conversion cancelled")
 
-        # Select converter (respecting OCR method if set)
-        if ocr_method and ocr_method != "docling_default":
-            converter = self._create_converter_with_options(ocr_method, **kwargs)
-        else:
-            converter = self.converter
-
-        if converter is None:
-            raise DocumentProcessingError("Docling converter not initialized")
+        # Create CPU converter for batch processing (GPU not supported for batch yet)
+        converter = self._create_cpu_converter(ocr_method, **kwargs)
 
         # Convert all docs
         from docling.datamodel.base_models import ConversionStatus
