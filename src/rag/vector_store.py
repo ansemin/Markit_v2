@@ -70,6 +70,7 @@ class VectorStoreManager:
         
         logger.info(f"VectorStoreManager initialized with persist_directory={self.persist_directory}")
     
+
     def get_vector_store(self) -> Chroma:
         """Get or create the Chroma vector store."""
         if self._vector_store is None:
@@ -314,7 +315,7 @@ class VectorStoreManager:
                 "collection_name": self.collection_name,
                 "persist_directory": self.persist_directory,
                 "document_count": count,
-                "embedding_model": "text-embedding-3-small"
+                "embedding_model": config.rag.embedding_model
             }
             
             logger.info(f"Collection info: {info}")
@@ -370,6 +371,36 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error searching with metadata filter: {e}")
             return []
+    
+    def reset_vector_store(self) -> bool:
+        """
+        Reset the vector store completely.
+        This will clear all documents and recreate the collection.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.info("Resetting vector store...")
+            
+            # Clear all documents and reset the vector store
+            success = self.clear_all_documents()
+            
+            if success:
+                # Also delete the collection to ensure clean state
+                if self._vector_store is not None:
+                    self._vector_store.delete_collection()
+                    self._vector_store = None
+                
+                logger.info("Vector store reset successfully")
+                return True
+            else:
+                logger.error("Failed to reset vector store")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error resetting vector store: {e}")
+            return False
     
     def clear_all_documents(self) -> bool:
         """

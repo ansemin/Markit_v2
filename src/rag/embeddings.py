@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from src.core.config import config
 from src.core.logging_config import get_logger
 
@@ -12,30 +12,28 @@ class EmbeddingManager:
     """Manages embedding models for document vectorization."""
     
     def __init__(self):
-        self._embedding_model: Optional[OpenAIEmbeddings] = None
+        self._embedding_model: Optional[GoogleGenerativeAIEmbeddings] = None
         
-    def get_embedding_model(self) -> OpenAIEmbeddings:
-        """Get or create the OpenAI embedding model."""
+    def get_embedding_model(self) -> GoogleGenerativeAIEmbeddings:
+        """Get or create the Gemini embedding model."""
         if self._embedding_model is None:
             try:
-                # Get OpenAI API key from config/environment
-                openai_api_key = config.api.openai_api_key or os.getenv("OPENAI_API_KEY")
+                # Get Google API key from config/environment
+                google_api_key = config.api.google_api_key or os.getenv("GOOGLE_API_KEY")
                 
-                if not openai_api_key:
-                    raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY in environment variables.")
+                if not google_api_key:
+                    raise ValueError("Google API key not found. Please set GOOGLE_API_KEY in environment variables.")
                 
-                self._embedding_model = OpenAIEmbeddings(
-                    model="text-embedding-3-small",
-                    openai_api_key=openai_api_key,
-                    chunk_size=1000,  # Process documents in chunks
-                    max_retries=3,
-                    timeout=30
+                self._embedding_model = GoogleGenerativeAIEmbeddings(
+                    model=config.rag.embedding_model,
+                    google_api_key=google_api_key,
+                    task_type="RETRIEVAL_DOCUMENT"
                 )
                 
-                logger.info("OpenAI embedding model initialized successfully")
+                logger.info(f"Gemini embedding model ({config.rag.embedding_model}) initialized successfully")
                 
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI embedding model: {e}")
+                logger.error(f"Failed to initialize Gemini embedding model: {e}")
                 raise
                 
         return self._embedding_model
@@ -50,14 +48,14 @@ class EmbeddingManager:
             
             # Check if we got a valid embedding (list of floats)
             if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], float):
-                logger.info("Embedding model test successful")
+                logger.info("Gemini embedding model test successful")
                 return True
             else:
-                logger.error("Embedding model test failed: Invalid embedding format")
+                logger.error("Gemini embedding model test failed: Invalid embedding format")
                 return False
                 
         except Exception as e:
-            logger.error(f"Embedding model test failed: {e}")
+            logger.error(f"Gemini embedding model test failed: {e}")
             return False
 
 # Global embedding manager instance

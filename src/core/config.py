@@ -86,7 +86,7 @@ class RAGConfig:
     chat_history_path: str = "./data/chat_history"
     
     # Embedding settings
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "models/text-embedding-004"
     embedding_chunk_size: int = 1000
     
     # Chunking settings
@@ -182,8 +182,8 @@ class Config:
             validation_results["warnings"].append("Mistral API key not found - Mistral parser will be unavailable")
         
         # Check RAG dependencies
-        if not self.api.openai_api_key:
-            validation_results["warnings"].append("OpenAI API key not found - RAG embeddings will be unavailable")
+        if not self.api.google_api_key:
+            validation_results["warnings"].append("Google API key not found - RAG embeddings will be unavailable")
         
         if not self.api.google_api_key:
             validation_results["warnings"].append("Google API key not found - RAG chat will be unavailable")
